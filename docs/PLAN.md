@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 4 (HTTP CONNECT transport).** Steps 1-3 committed.
+> **Next: step 5 (Basic authenticator).** Steps 1-4 committed.
 
 Update this section after each merged commit.
 
@@ -46,7 +46,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 
 **Acceptance:** `Dialer` works for `cfg.Manual == ""` (direct mode).
 
-### 4. `feat: add HTTP CONNECT transport`
+### 4. `feat: add HTTP CONNECT transport` ✓
 
 **Files:**
 
