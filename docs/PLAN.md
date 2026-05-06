@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 10 (WinINET detector).** Steps 1-9 committed.
+> **Next: step 11 (compose Dialer + HTTP transport adapter).** Steps 1-10 committed.
 
 Update this section after each merged commit.
 
@@ -102,7 +102,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - `detect/env.go` — uses `golang.org/x/net/http/httpproxy.FromEnvironment`. Honours both upper and lower case `*_PROXY`. Returns up to 2 candidates (http, https).
 - `detect/env_test.go` — `t.Setenv` based table.
 
-### 10. `feat: add WinINET detector (Windows)`
+### 10. `feat: add WinINET detector (Windows)` ✓
 
 **Files:**
 
