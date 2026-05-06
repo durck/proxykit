@@ -1,6 +1,10 @@
 package proxykit
 
-import "time"
+import (
+	"time"
+
+	"github.com/durck/proxykit/auth"
+)
 
 // Config configures a proxy [Dialer] or HTTP transport.
 type Config struct {
@@ -12,6 +16,11 @@ type Config struct {
 	// AutoDetect enables system proxy detection (environment variables,
 	// Windows WinINET registry). Consulted only if Manual is empty.
 	AutoDetect bool
+
+	// Auth is the ordered list of Authenticators tried on HTTP 407
+	// from a CONNECT proxy. The transport matches each Authenticator's
+	// Scheme against the proxy-advertised Proxy-Authenticate values.
+	Auth []auth.Authenticator
 
 	// Timeout bounds a single dial attempt to the proxy or destination.
 	// Zero means no timeout.

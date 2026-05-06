@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 5 (Basic authenticator).** Steps 1-4 committed.
+> **Next: step 6 (NTLM authenticator).** Steps 1-5 committed.
 
 Update this section after each merged commit.
 
@@ -60,7 +60,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 
 **Acceptance:** Transport works for unauthenticated proxies. 407 returns a typed error so the auth layer can hook in.
 
-### 5. `feat: add Basic authenticator`
+### 5. `feat: add Basic authenticator` ✓
 
 **Files:**
 

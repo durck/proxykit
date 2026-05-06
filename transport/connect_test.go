@@ -3,6 +3,7 @@ package transport_test
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -11,9 +12,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/durck/proxykit/auth"
 	"github.com/durck/proxykit/transport"
 )
 
@@ -315,6 +318,164 @@ func TestConnect_TLSConfigOverride_Verifies(t *testing.T) {
 	_, err := c.DialContext(context.Background(), "tcp", "example.com:443")
 	if err == nil {
 		t.Fatal("expected TLS verification error, got nil")
+	}
+}
+
+// --- auth integration ---------------------------------------------------
+
+func TestConnect_BasicAuth_Success(t *testing.T) {
+	backend := httpEcho(t)
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+	var requests int32
+
+	proxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		atomic.AddInt32(&requests, 1)
+		got := req.Header.Get("Proxy-Authorization")
+		if got == "" {
+			conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+				"Proxy-Authenticate: Basic realm=\"corp\"\r\n\r\n"))
+			return
+		}
+		if got != wantAuth {
+			t.Errorf("Proxy-Authorization = %q, want %q", got, wantAuth)
+			conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n\r\n"))
+			return
+		}
+		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		tunnelTo(req.URL.Host, conn)
+	})
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, proxy.URL),
+		Auth:     []auth.Authenticator{auth.Basic("alice", "secret")},
+	}
+
+	conn, err := c.DialContext(context.Background(), "tcp", backendAddr)
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", backendAddr); err != nil {
+		t.Fatalf("write GET: %v", err)
+	}
+	body, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read tunnel: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("tunnel response %q does not contain %q", body, "hello")
+	}
+	if got := atomic.LoadInt32(&requests); got != 2 {
+		t.Errorf("proxy received %d CONNECTs, want 2 (no-auth + with-auth)", got)
+	}
+}
+
+func TestConnect_BasicAuth_WrongCreds(t *testing.T) {
+	proxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		// Always 407 regardless of credentials supplied.
+		conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+			"Proxy-Authenticate: Basic realm=\"corp\"\r\n\r\n"))
+	})
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, proxy.URL),
+		Auth:     []auth.Authenticator{auth.Basic("alice", "wrong")},
+	}
+
+	_, err := c.DialContext(context.Background(), "tcp", "example.com:443")
+	var perr *transport.ProxyAuthError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *ProxyAuthError, got %T: %v", err, err)
+	}
+	if !strings.Contains(perr.Status, "407") {
+		t.Errorf("status %q does not contain 407", perr.Status)
+	}
+}
+
+func TestConnect_BasicAuth_NoMatchingScheme(t *testing.T) {
+	proxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		// Proxy advertises only NTLM; client only has Basic.
+		conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+			"Proxy-Authenticate: NTLM\r\n\r\n"))
+	})
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, proxy.URL),
+		Auth:     []auth.Authenticator{auth.Basic("a", "b")},
+	}
+
+	_, err := c.DialContext(context.Background(), "tcp", "example.com:443")
+	var perr *transport.ProxyAuthError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *ProxyAuthError, got %T: %v", err, err)
+	}
+	if len(perr.Schemes) != 1 || perr.Schemes[0] != "ntlm" {
+		t.Errorf("schemes = %v, want [ntlm]", perr.Schemes)
+	}
+}
+
+func TestConnect_BasicAuth_NoneSentinelSkipped(t *testing.T) {
+	// auth.None has Scheme "" so it must never be picked, even when
+	// the proxy demands auth. The result is the original 407.
+	proxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+			"Proxy-Authenticate: Basic realm=\"corp\"\r\n\r\n"))
+	})
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, proxy.URL),
+		Auth:     []auth.Authenticator{auth.None()},
+	}
+
+	_, err := c.DialContext(context.Background(), "tcp", "example.com:443")
+	var perr *transport.ProxyAuthError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *ProxyAuthError, got %T: %v", err, err)
+	}
+}
+
+func TestConnect_AuthChain_FallsThrough(t *testing.T) {
+	// First Basic creds (wrong) fails, second Basic creds (right) wins.
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("bob:right"))
+
+	backend := httpEcho(t)
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	proxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		got := req.Header.Get("Proxy-Authorization")
+		if got == wantAuth {
+			conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+			tunnelTo(req.URL.Host, conn)
+			return
+		}
+		conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+			"Proxy-Authenticate: Basic realm=\"corp\"\r\n\r\n"))
+	})
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, proxy.URL),
+		Auth: []auth.Authenticator{
+			auth.Basic("alice", "wrong"),
+			auth.Basic("bob", "right"),
+		},
+	}
+
+	conn, err := c.DialContext(context.Background(), "tcp", backendAddr)
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", backendAddr)
+	body, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("tunnel response %q does not contain %q", body, "hello")
 	}
 }
 

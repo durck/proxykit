@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +15,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/durck/proxykit/auth"
 )
+
+// maxAuthRounds bounds how many CONNECT requests a single Authenticator
+// may issue. NTLM uses 2-3 rounds, Negotiate 1-2; 5 leaves headroom.
+const maxAuthRounds = 5
 
 // Connect dials a destination through an HTTP CONNECT proxy.
 //
@@ -23,6 +30,11 @@ import (
 // corporate CONNECT proxies frequently terminate TLS with self-signed
 // or internally-issued certificates, and the security boundary is the
 // inner protocol, not the proxy hop. Set TLSConfig to opt out.
+//
+// On HTTP 407 each Authenticator in Auth whose Scheme matches one of
+// the proxy-advertised schemes is tried in order on a fresh proxy
+// connection. The first one that wins returns the tunnel; if none
+// succeeds the original *ProxyAuthError is returned.
 type Connect struct {
 	// ProxyURL is the proxy address. Scheme must be http or https.
 	ProxyURL *url.URL
@@ -34,15 +46,20 @@ type Connect struct {
 	// TLSConfig overrides the default {InsecureSkipVerify: true} used
 	// for https proxies. Cloned per dial. Ignored for http proxies.
 	TLSConfig *tls.Config
+
+	// Auth is the ordered list of Authenticators tried on HTTP 407.
+	// Each Authenticator whose Scheme matches an advertised
+	// Proxy-Authenticate scheme gets a fresh proxy connection. Empty
+	// means do not attempt auth — surface the 407 immediately.
+	Auth []auth.Authenticator
 }
 
 // ProxyAuthError is returned from Connect.DialContext when the proxy
-// answers with HTTP 407 Proxy Authentication Required. Schemes lists
-// the auth schemes from Proxy-Authenticate headers (lower-cased,
-// deduplicated, in the order the proxy advertised them).
+// answers with HTTP 407 Proxy Authentication Required and either no
+// Authenticator is configured for an advertised scheme or every
+// matching Authenticator finished without producing 200.
 type ProxyAuthError struct {
-	// Status is the raw status line, e.g.
-	// "HTTP/1.1 407 Proxy Authentication Required".
+	// Status is the raw status line from the final 407 response.
 	Status string
 
 	// Schemes are the lower-cased auth schemes advertised by the
@@ -61,10 +78,10 @@ func (e *ProxyAuthError) Error() string {
 }
 
 // DialContext opens a CONNECT tunnel through c.ProxyURL to address.
-// On HTTP 200 the returned net.Conn is the raw tunnel ready for the
-// inner protocol. On HTTP 407 the error is a *ProxyAuthError so the
-// caller can retry with credentials. Any other status returns an
-// opaque error wrapping the status line.
+// On HTTP 200 the returned net.Conn is the raw tunnel. On HTTP 407 the
+// authenticator chain is consulted; if none succeeds the error is a
+// *ProxyAuthError. Any other status returns an opaque error wrapping
+// the status line.
 func (c *Connect) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
 		return nil, fmt.Errorf("proxykit: CONNECT requires tcp network, got %q", network)
@@ -73,45 +90,102 @@ func (c *Connect) DialContext(ctx context.Context, network, address string) (net
 		return nil, errors.New("proxykit: Connect.ProxyURL is nil")
 	}
 
+	// Initial attempt without credentials. This both succeeds for
+	// open proxies and discovers the schemes the proxy will accept.
+	conn, err := c.attempt(ctx, address, nil)
+	var perr *ProxyAuthError
+	if !errors.As(err, &perr) || len(c.Auth) == 0 {
+		return conn, err
+	}
+
+	// 407 — iterate Authenticators whose Scheme matches an advertised
+	// scheme.
+	for _, a := range c.Auth {
+		if !schemeMatches(a.Scheme(), perr.Schemes) {
+			continue
+		}
+		authConn, authErr := c.attempt(ctx, address, a)
+		if authErr == nil {
+			return authConn, nil
+		}
+		var authPErr *ProxyAuthError
+		if !errors.As(authErr, &authPErr) {
+			// Non-auth failure (write/read/timeout): surface it.
+			return nil, authErr
+		}
+		// 407 again — this Authenticator failed, keep trying.
+		perr = authPErr
+	}
+
+	return nil, perr
+}
+
+// attempt opens a fresh proxy connection and runs one CONNECT
+// handshake. If a is nil, a single round without Proxy-Authorization
+// is performed. Otherwise the Authenticator dance loops until done or
+// the proxy answers 200/non-407.
+func (c *Connect) attempt(ctx context.Context, address string, a auth.Authenticator) (net.Conn, error) {
 	proxyConn, err := c.dialProxy(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Honour ctx deadline during the CONNECT handshake.
 	if d, ok := ctx.Deadline(); ok {
 		_ = proxyConn.SetDeadline(d)
 	}
 
-	if err := writeConnectRequest(proxyConn, address); err != nil {
-		proxyConn.Close()
-		return nil, fmt.Errorf("proxykit: write CONNECT: %w", err)
-	}
-
 	br := bufio.NewReader(proxyConn)
-	status, headers, err := readResponseHead(br)
-	if err != nil {
-		proxyConn.Close()
-		return nil, fmt.Errorf("proxykit: read CONNECT response: %w", err)
+	var challenge []byte
+
+	for round := 0; round < maxAuthRounds; round++ {
+		var extraHeaders []string
+		done := true
+
+		if a != nil {
+			var hdrErr error
+			extraHeaders, done, hdrErr = a.Headers(challenge)
+			if hdrErr != nil {
+				proxyConn.Close()
+				return nil, fmt.Errorf("proxykit: auth %s: %w", a.Scheme(), hdrErr)
+			}
+		}
+
+		if err := writeConnectRequest(proxyConn, address, extraHeaders); err != nil {
+			proxyConn.Close()
+			return nil, fmt.Errorf("proxykit: write CONNECT: %w", err)
+		}
+
+		status, headers, err := readResponseHead(br)
+		if err != nil {
+			proxyConn.Close()
+			return nil, fmt.Errorf("proxykit: read CONNECT response: %w", err)
+		}
+
+		switch parseStatusCode(status) {
+		case http.StatusOK:
+			_ = proxyConn.SetDeadline(time.Time{})
+			return &bufferedConn{Conn: proxyConn, r: br}, nil
+		case http.StatusProxyAuthRequired:
+			if done {
+				proxyConn.Close()
+				return nil, &ProxyAuthError{
+					Status:  status,
+					Schemes: parseAuthSchemes(headers.Values("Proxy-Authenticate")),
+				}
+			}
+			challenge = extractChallenge(headers, a.Scheme())
+		default:
+			proxyConn.Close()
+			return nil, fmt.Errorf("proxykit: proxy CONNECT failed: %s", status)
+		}
 	}
 
-	switch parseStatusCode(status) {
-	case http.StatusOK:
-		// Reset deadline before handing the conn to the caller.
-		// Wrap so the caller's first reads consume any bytes bufio
-		// pre-read past the response head.
-		_ = proxyConn.SetDeadline(time.Time{})
-		return &bufferedConn{Conn: proxyConn, r: br}, nil
-	case http.StatusProxyAuthRequired:
-		proxyConn.Close()
-		return nil, &ProxyAuthError{
-			Status:  status,
-			Schemes: parseAuthSchemes(headers.Values("Proxy-Authenticate")),
-		}
-	default:
-		proxyConn.Close()
-		return nil, fmt.Errorf("proxykit: proxy CONNECT failed: %s", status)
+	proxyConn.Close()
+	scheme := ""
+	if a != nil {
+		scheme = a.Scheme()
 	}
+	return nil, fmt.Errorf("proxykit: auth %q exceeded %d rounds", scheme, maxAuthRounds)
 }
 
 func (c *Connect) dialProxy(ctx context.Context) (net.Conn, error) {
@@ -139,16 +213,20 @@ func defaultProxyTLSConfig() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true} //nolint:gosec
 }
 
-// writeConnectRequest sends a minimal CONNECT request to w. The auth
-// layer issues a fresh CONNECT with Proxy-Authorization on retry, so
-// no extra headers are emitted here.
-func writeConnectRequest(w io.Writer, address string) error {
+// writeConnectRequest sends a CONNECT request with the supplied extra
+// headers (each entry is a complete "Name: value" line).
+func writeConnectRequest(w io.Writer, address string, extraHeaders []string) error {
 	var b strings.Builder
 	b.WriteString("CONNECT ")
 	b.WriteString(address)
 	b.WriteString(" HTTP/1.1\r\nHost: ")
 	b.WriteString(address)
-	b.WriteString("\r\n\r\n")
+	b.WriteString("\r\n")
+	for _, h := range extraHeaders {
+		b.WriteString(h)
+		b.WriteString("\r\n")
+	}
+	b.WriteString("\r\n")
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -205,6 +283,48 @@ func parseAuthSchemes(values []string) []string {
 		}
 	}
 	return out
+}
+
+// extractChallenge returns the raw challenge payload for the given
+// scheme from Proxy-Authenticate header values. Binary payloads
+// (NTLM/Negotiate) are base64-decoded; non-base64 payloads are
+// returned as-is. Returns nil if the scheme is not present.
+func extractChallenge(headers http.Header, scheme string) []byte {
+	for _, v := range headers.Values("Proxy-Authenticate") {
+		for _, chunk := range strings.Split(v, ",") {
+			chunk = strings.TrimSpace(chunk)
+			if chunk == "" {
+				continue
+			}
+			fs := strings.SplitN(chunk, " ", 2)
+			if !strings.EqualFold(fs[0], scheme) {
+				continue
+			}
+			if len(fs) < 2 {
+				return []byte{}
+			}
+			payload := strings.TrimSpace(fs[1])
+			if data, err := base64.StdEncoding.DecodeString(payload); err == nil {
+				return data
+			}
+			return []byte(payload)
+		}
+	}
+	return nil
+}
+
+// schemeMatches reports whether want appears in advertised. An empty
+// want never matches: sentinel Authenticators must opt out by scheme.
+func schemeMatches(want string, advertised []string) bool {
+	if want == "" {
+		return false
+	}
+	for _, a := range advertised {
+		if a == want {
+			return true
+		}
+	}
+	return false
 }
 
 // bufferedConn drains buffered bytes from r before falling through to
