@@ -25,7 +25,7 @@ import (
 // connectProxy starts an httptest server that hijacks the connection on
 // CONNECT and runs handler with the raw conn. handler is responsible
 // for writing the status line and any tunnel data.
-func connectProxy(t *testing.T, handler func(req *http.Request, conn net.Conn)) *httptest.Server {
+func connectProxy(t testing.TB, handler func(req *http.Request, conn net.Conn)) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
@@ -50,7 +50,7 @@ func connectProxy(t *testing.T, handler func(req *http.Request, conn net.Conn)) 
 }
 
 // connectProxyTLS is connectProxy over TLS (https proxy).
-func connectProxyTLS(t *testing.T, handler func(req *http.Request, conn net.Conn)) *httptest.Server {
+func connectProxyTLS(t testing.TB, handler func(req *http.Request, conn net.Conn)) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
@@ -71,7 +71,7 @@ func connectProxyTLS(t *testing.T, handler func(req *http.Request, conn net.Conn
 }
 
 // httpEcho is a backend HTTP server that responds with "hello".
-func httpEcho(t *testing.T) *httptest.Server {
+func httpEcho(t testing.TB) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "hello")
@@ -94,7 +94,7 @@ func tunnelTo(target string, proxyConn net.Conn) {
 	<-done
 }
 
-func mustParseURL(t *testing.T, raw string) *url.URL {
+func mustParseURL(t testing.TB, raw string) *url.URL {
 	t.Helper()
 	u, err := url.Parse(raw)
 	if err != nil {
