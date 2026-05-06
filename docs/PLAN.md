@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 12 (README, examples, proxytest CLI).** Steps 1-11 committed.
+> **All 12 steps committed.** v0.1 ready for tag.
 
 Update this section after each merged commit.
 
@@ -119,7 +119,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - `dialer_test.go` — end-to-end via mock: manual URL works, auto-detect works (with env set), fallback chain works.
 - `transport_test.go` — HTTP request through proxy.
 
-### 12. `docs: README usage, examples, proxytest CLI`
+### 12. `docs: README usage, examples, proxytest CLI` ✓
 
 **Files:**
 
