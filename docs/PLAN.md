@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 11 (compose Dialer + HTTP transport adapter).** Steps 1-10 committed.
+> **Next: step 12 (README, examples, proxytest CLI).** Steps 1-11 committed.
 
 Update this section after each merged commit.
 
@@ -110,7 +110,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - `detect/wininet_other.go` (`//go:build !windows`) — empty implementation.
 - `detect/wininet_test.go` — chooses pure-function tests (parser-only), no real registry mutation.
 
-### 11. `feat: compose Dialer and add HTTP transport adapter`
+### 11. `feat: compose Dialer and add HTTP transport adapter` ✓
 
 **Files:**
 
