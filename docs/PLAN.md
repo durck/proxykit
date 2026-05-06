@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 3 (Direct dialer + Dialer interface).** Steps 1-2 committed.
+> **Next: step 4 (HTTP CONNECT transport).** Steps 1-3 committed.
 
 Update this section after each merged commit.
 
@@ -36,7 +36,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 
 **Acceptance:** `go test ./...` green. Public symbols documented.
 
-### 3. `feat: add Direct dialer and Dialer interface`
+### 3. `feat: add Direct dialer and Dialer interface` ✓
 
 **Files:**
 
