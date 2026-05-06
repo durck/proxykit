@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 6 (NTLM authenticator).** Steps 1-5 committed.
+> **Next: step 7 (Negotiate authenticator, Windows SSPI).** Steps 1-6 committed.
 
 Update this section after each merged commit.
 
@@ -71,7 +71,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - Integrate into `transport/connect.go`: on 407, iterate `cfg.Auth`, retry with each authenticator until 200 or all exhausted.
 - Update `transport/connect_test.go` with a 407+Basic mock.
 
-### 6. `feat: add NTLM authenticator`
+### 6. `feat: add NTLM authenticator` ✓
 
 **Files:**
 

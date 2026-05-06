@@ -1,6 +1,8 @@
 package transport_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -476,6 +478,154 @@ func TestConnect_AuthChain_FallsThrough(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "hello") {
 		t.Errorf("tunnel response %q does not contain %q", body, "hello")
+	}
+}
+
+// type2Fixture is a valid NTLM Type 2 (Challenge) message from the
+// MS-NLMP examples — accepted by bodgit/ntlmssp.
+var type2Fixture = []byte{
+	0x4e, 0x54, 0x4c, 0x4d, 0x53, 0x53, 0x50, 0x00,
+	0x02, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x0c, 0x00,
+	0x38, 0x00, 0x00, 0x00, 0x33, 0x82, 0x02, 0xe2,
+	0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x06, 0x00, 0x70, 0x17, 0x00, 0x00, 0x00, 0x0f,
+	0x53, 0x00, 0x65, 0x00, 0x72, 0x00, 0x76, 0x00,
+	0x65, 0x00, 0x72, 0x00,
+}
+
+// TestConnect_NTLM_FullDance walks the full 3-round NTLM exchange:
+//   - initial CONNECT without auth → 407 advertising NTLM
+//   - fresh proxy connection: Type 1 sent → 407 with Type 2 challenge
+//   - same proxy connection: Type 3 sent → 200 → tunnel
+//
+// The mock proxy is a raw net.Listener that handles two consecutive
+// CONNECT requests on the second TCP conn (NTLM is connection-bound)
+// via http.ReadRequest, asserts the Type 1/3 message prefixes are
+// well-formed, then bridges to the backend.
+func TestConnect_NTLM_FullDance(t *testing.T) {
+	backend := httpEcho(t)
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	type2B64 := base64.StdEncoding.EncodeToString(type2Fixture)
+
+	var (
+		gotType1 []byte
+		gotType3 []byte
+	)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+
+		// Connection 1: initial no-auth attempt.
+		c1, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		func() {
+			defer c1.Close()
+			br := bufio.NewReader(c1)
+			if _, err := http.ReadRequest(br); err != nil {
+				return
+			}
+			c1.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+				"Proxy-Authenticate: NTLM\r\n\r\n"))
+		}()
+
+		// Connection 2: NTLM dance.
+		c2, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c2.Close()
+		br := bufio.NewReader(c2)
+
+		// Round 1: Type 1.
+		req1, err := http.ReadRequest(br)
+		if err != nil {
+			t.Errorf("round 1 ReadRequest: %v", err)
+			return
+		}
+		ah1 := req1.Header.Get("Proxy-Authorization")
+		if !strings.HasPrefix(ah1, "NTLM ") {
+			t.Errorf("round 1 Proxy-Authorization = %q, want NTLM prefix", ah1)
+			return
+		}
+		gotType1, err = base64.StdEncoding.DecodeString(strings.TrimPrefix(ah1, "NTLM "))
+		if err != nil {
+			t.Errorf("round 1 base64: %v", err)
+			return
+		}
+		c2.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n" +
+			"Proxy-Authenticate: NTLM " + type2B64 + "\r\n\r\n"))
+
+		// Round 2: Type 3.
+		req2, err := http.ReadRequest(br)
+		if err != nil {
+			t.Errorf("round 2 ReadRequest: %v", err)
+			return
+		}
+		ah2 := req2.Header.Get("Proxy-Authorization")
+		gotType3, err = base64.StdEncoding.DecodeString(strings.TrimPrefix(ah2, "NTLM "))
+		if err != nil {
+			t.Errorf("round 2 base64: %v", err)
+			return
+		}
+		c2.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+
+		// Tunnel to backend.
+		target, err := net.Dial("tcp", req2.URL.Host)
+		if err != nil {
+			return
+		}
+		defer target.Close()
+		done := make(chan struct{}, 2)
+		go func() { io.Copy(target, br); done <- struct{}{} }()
+		go func() { io.Copy(c2, target); done <- struct{}{} }()
+		<-done
+	}()
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, "http://"+ln.Addr().String()),
+		Auth:     []auth.Authenticator{auth.NTLM("DOMAIN", "user", "pass")},
+	}
+
+	conn, err := c.DialContext(context.Background(), "tcp", backendAddr)
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", backendAddr)
+	body, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read tunnel: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("tunnel response %q does not contain hello", body)
+	}
+
+	<-serverDone
+
+	if !bytes.HasPrefix(gotType1, []byte("NTLMSSP\x00")) {
+		t.Errorf("Type 1 missing NTLMSSP signature: % x", gotType1[:min(8, len(gotType1))])
+	}
+	if len(gotType1) < 12 || gotType1[8] != 1 {
+		t.Errorf("Type 1 MessageType = %#x, want 0x01", gotType1[8])
+	}
+	if !bytes.HasPrefix(gotType3, []byte("NTLMSSP\x00")) {
+		t.Errorf("Type 3 missing NTLMSSP signature: % x", gotType3[:min(8, len(gotType3))])
+	}
+	if len(gotType3) < 12 || gotType3[8] != 3 {
+		t.Errorf("Type 3 MessageType = %#x, want 0x03", gotType3[8])
 	}
 }
 
