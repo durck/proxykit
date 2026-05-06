@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 9 (env vars detector).** Steps 1-8 committed.
+> **Next: step 10 (WinINET detector).** Steps 1-9 committed.
 
 Update this section after each merged commit.
 
@@ -94,7 +94,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - `transport/socks5.go` — wraps `golang.org/x/net/proxy.SOCKS5`. Honours context cancellation.
 - `transport/socks5_test.go` — `armon/go-socks5` as test server (dev-only dep; vendor or use as test-only). Or write a minimal SOCKS5 stub by hand.
 
-### 9. `feat: add env vars detector`
+### 9. `feat: add env vars detector` ✓
 
 **Files:**
 
