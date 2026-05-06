@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 8 (SOCKS5 transport).** Steps 1-7 committed.
+> **Next: step 9 (env vars detector).** Steps 1-8 committed.
 
 Update this section after each merged commit.
 
@@ -87,7 +87,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - `auth/negotiate_other.go` (`//go:build !windows`) — stub returning `errors.ErrUnsupported` or similar.
 - `auth/negotiate_test.go` — Windows-only smoke test (skipped on other platforms).
 
-### 8. `feat: add SOCKS5 transport`
+### 8. `feat: add SOCKS5 transport` ✓
 
 **Files:**
 
