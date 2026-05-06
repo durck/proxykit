@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 7 (Negotiate authenticator, Windows SSPI).** Steps 1-6 committed.
+> **Next: step 8 (SOCKS5 transport).** Steps 1-7 committed.
 
 Update this section after each merged commit.
 
@@ -79,7 +79,7 @@ Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.git
 - `auth/ntlm_test.go` — mock NTLM proxy (challenge fixed, verify Type 1/3 messages match expected base64).
 - Add to `go.mod`: `github.com/bodgit/ntlmssp`.
 
-### 7. `feat: add Negotiate authenticator (Windows SSPI)`
+### 7. `feat: add Negotiate authenticator (Windows SSPI)` ✓
 
 **Files:**
 

@@ -2,7 +2,10 @@ module github.com/durck/proxykit
 
 go 1.25.4
 
-require github.com/bodgit/ntlmssp v0.0.0-20240506230425-31973bb52d9b
+require (
+	github.com/bodgit/ntlmssp v0.0.0-20240506230425-31973bb52d9b
+	golang.org/x/sys v0.19.0
+)
 
 require (
 	github.com/bodgit/windows v1.0.1 // indirect
