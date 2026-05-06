@@ -4,7 +4,7 @@
 
 ## Current step
 
-> **Next: step 2 (Config + ParseProxyURL).** Step 1 (skeleton) is committed.
+> **Next: step 3 (Direct dialer + Dialer interface).** Steps 1-2 committed.
 
 Update this section after each merged commit.
 
@@ -22,7 +22,7 @@ Update this section after each merged commit.
 
 Bootstrap: `go.mod`, `LICENSE` (MIT), `README.md`, `doc.go`, `.gitignore`, `.github/workflows/ci.yml`, empty package directories. Verify `go vet` and `go build` pass on a tree with no Go files yet.
 
-### 2. `feat: add Config and ParseProxyURL`
+### 2. `feat: add Config and ParseProxyURL` ✓
 
 **Files:**
 
