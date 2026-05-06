@@ -1,0 +1,22 @@
+# Build output
+bin/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Local
+.env
+*.local
