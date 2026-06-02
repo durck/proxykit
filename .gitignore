@@ -21,3 +21,4 @@ coverage.html
 .env
 *.local
 .claude/
+_local/
