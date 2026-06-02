@@ -16,8 +16,7 @@ import "strings"
 //
 // ftp= entries are ignored. Returns "" if no usable entry is found.
 //
-// Lifted from reverse_ssh's parseWinINETProxyString (BSD-3) and kept
-// platform-agnostic so tests run on every CI matrix entry without a
+// Kept platform-agnostic so tests run on every CI matrix entry without a
 // real registry to point at.
 func parseWinINETProxyString(raw string) string {
 	raw = strings.TrimSpace(raw)
