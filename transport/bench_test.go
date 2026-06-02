@@ -40,6 +40,32 @@ func BenchmarkConnect_Dial(b *testing.B) {
 	}
 }
 
+// BenchmarkSOCKS5_Dial measures the cost of opening a SOCKS5 tunnel
+// through a local in-process stub (no auth). Like BenchmarkConnect_Dial
+// it is dominated by the two TCP dials per iteration — a regression
+// baseline, not an absolute throughput number.
+func BenchmarkSOCKS5_Dial(b *testing.B) {
+	backend := httpEcho(b)
+	target, ok := backendAddr(backend.URL)
+	if !ok {
+		b.Fatalf("strip http://: %s", backend.URL)
+	}
+
+	proxyURL := startSOCKS5Stub(b, socks5Opts{})
+	s := &transport.SOCKS5{ProxyURL: mustParseURL(b, proxyURL)}
+	ctx := context.Background()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		conn, err := s.DialContext(ctx, "tcp", target)
+		if err != nil {
+			b.Fatalf("DialContext: %v", err)
+		}
+		conn.Close()
+	}
+}
+
 func backendAddr(rawURL string) (string, bool) {
 	const prefix = "http://"
 	if len(rawURL) <= len(prefix) || rawURL[:len(prefix)] != prefix {
