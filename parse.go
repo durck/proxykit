@@ -31,7 +31,7 @@ func ParseProxyURL(s string) (*url.URL, error) {
 	if retryAsBare {
 		u, err = url.Parse("http://" + s)
 		if err != nil {
-			return nil, fmt.Errorf("proxykit: invalid proxy URL %q: %w", s, err)
+			return nil, fmt.Errorf("proxykit: invalid proxy URL %q: %w", redactProxyURL(s), err)
 		}
 	}
 
@@ -42,7 +42,7 @@ func ParseProxyURL(s string) (*url.URL, error) {
 	u.Scheme = scheme
 
 	if u.Host == "" {
-		return nil, fmt.Errorf("proxykit: proxy URL %q has no host", s)
+		return nil, fmt.Errorf("proxykit: proxy URL %q has no host", redactProxyURL(s))
 	}
 
 	if u.Port() == "" {
@@ -69,4 +69,14 @@ func defaultPort(scheme string) string {
 	default:
 		return "80"
 	}
+}
+
+// redactProxyURL strips any embedded password from a proxy URL so it is
+// safe to log or wrap in an error. It falls back to the raw string when
+// there is no userinfo to redact or the string cannot be parsed.
+func redactProxyURL(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.User != nil {
+		return u.Redacted()
+	}
+	return raw
 }

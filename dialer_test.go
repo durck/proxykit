@@ -257,6 +257,30 @@ func TestNewDialer_AutoDetectFromEnv(t *testing.T) {
 	}
 }
 
+// --- credential redaction -----------------------------------------------
+
+func TestNewDialer_RedactsCredentialsInLog(t *testing.T) {
+	var logs []string
+	// Host-less URL with embedded credentials: ParseProxyURL fails, so the
+	// URL is reported both in the warning log and in the wrapped error.
+	// Neither must leak the password.
+	proxykit.NewDialer(proxykit.Config{
+		Manual: "http://alice:s3cr3t@",
+		OnLog:  func(level, msg string) { logs = append(logs, msg) },
+	})
+
+	joined := strings.Join(logs, "\n")
+	if joined == "" {
+		t.Fatal("expected a warning log for the invalid proxy URL, got none")
+	}
+	if strings.Contains(joined, "s3cr3t") {
+		t.Errorf("log leaked the proxy password: %q", joined)
+	}
+	if !strings.Contains(joined, "xxxxx") {
+		t.Errorf("expected redacted password marker in log, got %q", joined)
+	}
+}
+
 // --- fallback chain -----------------------------------------------------
 
 func TestNewDialer_FallbackChain(t *testing.T) {

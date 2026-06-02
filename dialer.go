@@ -74,7 +74,7 @@ func resolveEntries(cfg Config) []proxyEntry {
 	add := func(rawURL, user, pass string) {
 		u, err := ParseProxyURL(rawURL)
 		if err != nil {
-			logf(cfg.OnLog, "warn", "proxykit: skipping invalid proxy URL %q: %v", rawURL, err)
+			logf(cfg.OnLog, "warn", "proxykit: skipping invalid proxy URL %q: %v", redactProxyURL(rawURL), err)
 			return
 		}
 		if u.User != nil {
@@ -147,6 +147,10 @@ type fallbackDialer struct {
 func (f *fallbackDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	var errs []error
 	for i, d := range f.dialers {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			break
+		}
 		conn, err := d.DialContext(ctx, network, address)
 		if err == nil {
 			return conn, nil
