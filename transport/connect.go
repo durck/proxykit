@@ -130,8 +130,14 @@ func (c *Connect) attempt(ctx context.Context, address string, a auth.Authentica
 		return nil, err
 	}
 
+	// Bound the handshake reads/writes. Prefer the context deadline;
+	// otherwise fall back to c.Timeout so a proxy that accepts the TCP
+	// connection but never answers cannot hang the dial forever. Cleared
+	// on success before the tunnel is handed back.
 	if d, ok := ctx.Deadline(); ok {
 		_ = proxyConn.SetDeadline(d)
+	} else if c.Timeout > 0 {
+		_ = proxyConn.SetDeadline(time.Now().Add(c.Timeout))
 	}
 
 	br := bufio.NewReader(proxyConn)

@@ -40,6 +40,18 @@ func (s *SOCKS5) DialContext(ctx context.Context, network, address string) (net.
 		return nil, fmt.Errorf("proxykit: SOCKS5 requires socks or socks5 proxy scheme, got %q", s.ProxyURL.Scheme)
 	}
 
+	// The base net.Dialer.Timeout below bounds only the TCP connect to
+	// the proxy, not the SOCKS handshake. When a Timeout is set but the
+	// caller's context carries no deadline, derive one so a proxy that
+	// stalls mid-handshake cannot hang the dial forever.
+	if s.Timeout > 0 {
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, s.Timeout)
+			defer cancel()
+		}
+	}
+
 	var auth *proxy.Auth
 	if s.ProxyURL.User != nil {
 		pw, _ := s.ProxyURL.User.Password()

@@ -657,3 +657,31 @@ func TestProxyAuthError_Error(t *testing.T) {
 		})
 	}
 }
+
+func TestConnect_TimeoutBoundsHandshake(t *testing.T) {
+	// Proxy accepts the TCP connection but never sends a CONNECT
+	// response. With Timeout set and a context that carries no deadline,
+	// DialContext must still unblock — regression guard: Timeout used to
+	// bound only the TCP connect, not the response read.
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	proxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		<-block // hold the connection open without answering
+	})
+
+	c := &transport.Connect{
+		ProxyURL: mustParseURL(t, proxy.URL),
+		Timeout:  150 * time.Millisecond,
+	}
+
+	start := time.Now()
+	_, err := c.DialContext(context.Background(), "tcp", "example.com:443")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("dial unblocked after %v; Timeout was 150ms", elapsed)
+	}
+}

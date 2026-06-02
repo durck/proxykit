@@ -37,13 +37,13 @@ type socks5Opts struct {
 	onConnections *int32
 }
 
-func startSOCKS5Stub(t *testing.T, opts socks5Opts) string {
-	t.Helper()
+func startSOCKS5Stub(tb testing.TB, opts socks5Opts) string {
+	tb.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	t.Cleanup(func() { ln.Close() })
+	tb.Cleanup(func() { ln.Close() })
 
 	go func() {
 		for {
@@ -370,5 +370,42 @@ func TestSOCKS5_ContextCancel(t *testing.T) {
 	}
 	if elapsed > 2*time.Second {
 		t.Errorf("dial unblocked after %v, deadline was 100ms", elapsed)
+	}
+}
+
+func TestSOCKS5_TimeoutBoundsHandshake(t *testing.T) {
+	// Listener accepts TCP but never speaks SOCKS, so the handshake would
+	// block forever. With Timeout set and a context that carries no
+	// deadline, DialContext must still unblock — regression guard: Timeout
+	// used to bound only the TCP connect, not the handshake.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { c.Close() })
+		}
+	}()
+
+	s := &transport.SOCKS5{
+		ProxyURL: mustParseURL(t, "socks5://"+ln.Addr().String()),
+		Timeout:  150 * time.Millisecond,
+	}
+
+	start := time.Now()
+	_, err = s.DialContext(context.Background(), "tcp", "example.com:80")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("dial unblocked after %v; Timeout was 150ms", elapsed)
 	}
 }
