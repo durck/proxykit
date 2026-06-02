@@ -90,6 +90,10 @@ client := &http.Client{
 resp, err := client.Get("https://example.com")
 ```
 
+## Security note
+
+For an **`https`** proxy, the TLS handshake *to the proxy* skips certificate verification by default (`InsecureSkipVerify`). Corporate CONNECT proxies routinely present internally-issued certificates, and the end-to-end TLS to your actual destination is unaffected by this. To verify the proxy certificate instead, build a `transport.Connect{TLSConfig: ...}` directly rather than going through `Config`. Plain `http` proxies and SOCKS5 are unaffected.
+
 ## Examples
 
 Runnable demos live under [`examples/`](examples/):

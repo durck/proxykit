@@ -14,7 +14,9 @@ type Config struct {
 	Manual string
 
 	// AutoDetect enables system proxy detection (environment variables,
-	// Windows WinINET registry). Consulted only if Manual is empty.
+	// Windows WinINET registry). It is independent of Manual: when both
+	// are set, Manual is tried first and any detected proxies are
+	// appended as fallbacks.
 	AutoDetect bool
 
 	// Auth is the ordered list of Authenticators tried on HTTP 407
@@ -23,7 +25,10 @@ type Config struct {
 	Auth []auth.Authenticator
 
 	// Timeout bounds a single dial attempt to the proxy or destination.
-	// Zero means no timeout.
+	// Zero means no timeout. When several proxies resolve into a fallback
+	// chain the timeout applies per attempt, so the worst-case total dial
+	// time is len(chain) × Timeout; use the context deadline to cap the
+	// whole operation.
 	Timeout time.Duration
 
 	// OnLog, when non-nil, receives diagnostic messages. The level is
