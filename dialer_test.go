@@ -3,12 +3,14 @@ package proxykit_test
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/durck/proxykit"
@@ -254,6 +256,58 @@ func TestNewDialer_AutoDetectFromEnv(t *testing.T) {
 	defer conn.Close()
 	if !strings.Contains(roundTripGet(t, conn, backendAddr), "hello") {
 		t.Errorf("response did not contain hello — env auto-detect failed")
+	}
+}
+
+func TestNewDialer_FallbackStopsWhenContextCancelled(t *testing.T) {
+	clearProxyEnv(t)
+
+	var firstHits, secondHits atomic.Int32
+	firstProxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		firstHits.Add(1)
+		conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
+	})
+	secondProxy := connectProxy(t, func(req *http.Request, conn net.Conn) {
+		secondHits.Add(1)
+		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+	})
+	t.Setenv("HTTP_PROXY", secondProxy.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var logs []string
+	d := proxykit.NewDialer(proxykit.Config{
+		Manual:     firstProxy.URL,
+		AutoDetect: true,
+		OnLog: func(level, msg string) {
+			logs = append(logs, msg)
+			cancel()
+		},
+	})
+
+	conn, err := d.DialContext(ctx, "tcp", "example.com:443")
+	if conn != nil {
+		conn.Close()
+		t.Fatalf("DialContext returned unexpected connection")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("DialContext error = %v, want context.Canceled", err)
+	}
+	if got := firstHits.Load(); got != 1 {
+		t.Fatalf("first proxy hits = %d, want 1", got)
+	}
+	if got := secondHits.Load(); got != 0 {
+		t.Fatalf("second proxy hits = %d, want 0 after context cancellation", got)
+	}
+	if got := len(logs); got != 1 {
+		t.Fatalf("fallback log count = %d, want 1: %v", got, logs)
+	}
+	if !strings.Contains(logs[0], "dialer 0 failed") {
+		t.Fatalf("fallback log = %q, want first dialer failure", logs[0])
+	}
+	if strings.Contains(strings.Join(logs, "\n"), "dialer 1 failed") {
+		t.Fatalf("fallback attempted the second dialer after cancellation: %v", logs)
 	}
 }
 
