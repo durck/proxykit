@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -71,12 +72,42 @@ func defaultPort(scheme string) string {
 	}
 }
 
+// schemeAuthority matches a leading "scheme://" so the userinfo that
+// follows can be located even in strings url.Parse rejects. It is
+// anchored and strict (RE2, linear time), so a "://" sitting inside a
+// password cannot be mistaken for the scheme separator.
+var schemeAuthority = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
+
 // redactProxyURL strips any embedded password from a proxy URL so it is
-// safe to log or wrap in an error. It falls back to the raw string when
-// there is no userinfo to redact or the string cannot be parsed.
+// safe to log or wrap in an error. A cleanly parsed URL with userinfo is
+// redacted via url.URL.Redacted; otherwise — whether url.Parse rejected
+// the string (e.g. a control character) or mis-parsed it so the userinfo
+// went unrecognised (e.g. "user:pass@host" read as scheme "user") — the
+// userinfo is located by hand and its password masked.
+//
+// The userinfo is everything before the last '@' (the same boundary
+// url.Parse uses), after any leading scheme://. The password runs from
+// the first ':' to that '@', so values containing '/', spaces, control
+// characters or extra '@' signs are masked too. Strings with no
+// "user:password@" segment are returned unchanged.
 func redactProxyURL(raw string) string {
 	if u, err := url.Parse(raw); err == nil && u.User != nil {
 		return u.Redacted()
 	}
-	return raw
+	at := strings.LastIndexByte(raw, '@')
+	if at < 0 {
+		return raw // no userinfo, nothing to mask
+	}
+	start := 0
+	if loc := schemeAuthority.FindStringIndex(raw); loc != nil {
+		start = loc[1]
+	}
+	if start > at {
+		return raw // '@' precedes the authority — not userinfo
+	}
+	colon := strings.IndexByte(raw[start:at], ':')
+	if colon < 0 {
+		return raw // username only, no password to mask
+	}
+	return raw[:start+colon+1] + "xxxxx" + raw[at:]
 }
