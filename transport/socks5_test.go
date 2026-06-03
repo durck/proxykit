@@ -261,6 +261,102 @@ func TestSOCKS5_UserPass_Wrong(t *testing.T) {
 	}
 }
 
+func TestSOCKS5_TypedAuth_Success(t *testing.T) {
+	backend := httpEcho(t)
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	proxyURL := startSOCKS5Stub(t, socks5Opts{
+		requireUserPass: true,
+		wantUser:        "alice",
+		wantPass:        "s3cr3t",
+	})
+
+	// Credentials live only in the typed option; the URL has no userinfo.
+	s := &transport.SOCKS5{
+		ProxyURL: mustParseURL(t, proxyURL),
+		Auth:     &transport.SOCKS5Auth{Username: "alice", Password: "s3cr3t"},
+	}
+	conn, err := s.DialContext(context.Background(), "tcp", backendAddr)
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", backendAddr)
+	body, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("response %q does not contain %q", body, "hello")
+	}
+}
+
+func TestSOCKS5_TypedAuth_OverridesURL(t *testing.T) {
+	backend := httpEcho(t)
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	proxyURL := startSOCKS5Stub(t, socks5Opts{
+		requireUserPass: true,
+		wantUser:        "alice",
+		wantPass:        "right",
+	})
+
+	// URL userinfo carries the wrong password; the typed Auth carries the
+	// right one. A successful tunnel proves the typed option takes
+	// precedence over ProxyURL.User.
+	u := mustParseURL(t, proxyURL)
+	u.User = url.UserPassword("alice", "wrong")
+
+	s := &transport.SOCKS5{
+		ProxyURL: u,
+		Auth:     &transport.SOCKS5Auth{Username: "alice", Password: "right"},
+	}
+	conn, err := s.DialContext(context.Background(), "tcp", backendAddr)
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", backendAddr)
+	body, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("response %q does not contain %q", body, "hello")
+	}
+}
+
+func TestSOCKS5_TypedAuth_EmptyFallsBack(t *testing.T) {
+	backend := httpEcho(t)
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	// No-auth proxy. An empty &SOCKS5Auth{} must not activate an RFC 1929
+	// username/password handshake (no empty-username form exists); it
+	// falls back to no-auth and the dial succeeds.
+	proxyURL := startSOCKS5Stub(t, socks5Opts{})
+
+	s := &transport.SOCKS5{
+		ProxyURL: mustParseURL(t, proxyURL),
+		Auth:     &transport.SOCKS5Auth{},
+	}
+	conn, err := s.DialContext(context.Background(), "tcp", backendAddr)
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", backendAddr)
+	body, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(body), "hello") {
+		t.Errorf("response %q does not contain %q", body, "hello")
+	}
+}
+
 func TestSOCKS5_TargetRejected(t *testing.T) {
 	proxyURL := startSOCKS5Stub(t, socks5Opts{
 		rejectTarget: func(host string, port uint16) bool { return true },

@@ -15,15 +15,33 @@ import (
 // for username/password). It is a thin wrapper over
 // golang.org/x/net/proxy.SOCKS5 that honours context.Context.
 //
-// ProxyURL must have scheme socks or socks5. Userinfo, when present,
-// is forwarded as RFC 1929 username/password authentication.
+// ProxyURL must have scheme socks or socks5. Credentials may be supplied
+// either via the typed Auth field or as userinfo in ProxyURL; Auth takes
+// precedence. Both are forwarded as RFC 1929 username/password
+// authentication.
 type SOCKS5 struct {
 	// ProxyURL is the proxy address. Scheme must be socks or socks5.
 	ProxyURL *url.URL
 
+	// Auth, when non-nil with a non-empty Username, supplies RFC 1929
+	// username/password credentials and takes precedence over any
+	// userinfo in ProxyURL. When nil (or its Username is empty),
+	// credentials are inferred from ProxyURL.User if present. An empty
+	// Username never authenticates: RFC 1929 has no such form, so it
+	// falls back rather than forcing a doomed handshake.
+	Auth *SOCKS5Auth
+
 	// Timeout bounds a single dial attempt to the proxy or destination.
 	// Zero means no timeout.
 	Timeout time.Duration
+}
+
+// SOCKS5Auth carries RFC 1929 username/password credentials for a SOCKS5
+// proxy. Set it on [SOCKS5.Auth] to authenticate without embedding the
+// credentials in ProxyURL.
+type SOCKS5Auth struct {
+	Username string
+	Password string
 }
 
 // DialContext opens a TCP tunnel through s.ProxyURL to address.
@@ -52,8 +70,15 @@ func (s *SOCKS5) DialContext(ctx context.Context, network, address string) (net.
 		}
 	}
 
+	// Typed Auth wins over URL userinfo; fall back to ProxyURL.User for
+	// backward compatibility when no typed credentials are given. An
+	// empty Username is treated as "unset" rather than activating a
+	// username/password handshake that RFC 1929 would reject.
 	var auth *proxy.Auth
-	if s.ProxyURL.User != nil {
+	switch {
+	case s.Auth != nil && s.Auth.Username != "":
+		auth = &proxy.Auth{User: s.Auth.Username, Password: s.Auth.Password}
+	case s.ProxyURL.User != nil:
 		pw, _ := s.ProxyURL.User.Password()
 		auth = &proxy.Auth{User: s.ProxyURL.User.Username(), Password: pw}
 	}
