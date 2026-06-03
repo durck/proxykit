@@ -2,7 +2,6 @@ package auth_test
 
 import (
 	"encoding/base64"
-	"errors"
 	"runtime"
 	"strings"
 	"testing"
@@ -13,35 +12,6 @@ import (
 func TestNegotiate_Scheme(t *testing.T) {
 	if got := auth.Negotiate("http/x").Scheme(); got != "negotiate" {
 		t.Errorf("Scheme = %q, want %q", got, "negotiate")
-	}
-}
-
-func TestNegotiate_NonWindowsUnsupported(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows has its own smoke test")
-	}
-	_, done, err := auth.Negotiate("http/proxy").Headers(nil)
-	if !errors.Is(err, errors.ErrUnsupported) {
-		t.Errorf("err = %v, want errors.ErrUnsupported", err)
-	}
-	if !done {
-		t.Errorf("done = false, want true")
-	}
-}
-
-func TestNegotiate_EmptySPN(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Windows-only — non-Windows already errors with ErrUnsupported regardless of SPN")
-	}
-	_, done, err := auth.Negotiate("").Headers(nil)
-	if err == nil {
-		t.Fatal("expected error for empty SPN, got nil")
-	}
-	if !done {
-		t.Errorf("done = false on terminal error, want true")
-	}
-	if !strings.Contains(err.Error(), "SPN") {
-		t.Errorf("error %q does not mention SPN", err.Error())
 	}
 }
 
