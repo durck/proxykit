@@ -121,6 +121,7 @@ proxytest detect
 # URL                                       FROM        USER
 # http://proxy.corp:8080                    env
 # socks5://socks.corp:1080                  wininet
+# (on Linux, linux/etc-environment, linux/gnome and linux/kde rows appear too)
 
 proxytest dial example.com:443                            # direct
 proxytest dial --auto example.com:443                     # detect.All
