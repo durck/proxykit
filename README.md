@@ -10,7 +10,7 @@ Small, dependency-light Go library for outbound connections through HTTP/HTTPS C
 |-------------------|-------------------------------------------------------------------|
 | Transports        | HTTP CONNECT (TCP+TLS), SOCKS5, Direct                            |
 | Authentication    | None, Basic, NTLM, Negotiate / Kerberos (Windows SSPI)            |
-| Auto-detection    | `*_PROXY` env vars (any platform), Windows WinINET (HKCU)         |
+| Auto-detection    | `*_PROXY` env vars (any platform), Windows WinINET (HKCU), Linux `/etc/environment` + GNOME + KDE |
 | API               | `Dialer` (`net.Dial`-compatible), `http.RoundTripper` adapter     |
 | Platforms         | Windows, Linux, macOS — no cgo, fully static                      |
 
@@ -20,7 +20,7 @@ PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception /
 
 ### Roadmap
 
-- **v0.2** — Linux detection (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5`.
+- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); remaining: Linux/macOS Kerberos via `jcmturner/gokrb5`.
 - **v0.3+** — community-driven (SOCKS5 user/pass options, WinHTTP detection, macOS detection on request).
 
 ## Install
@@ -49,14 +49,14 @@ d := proxykit.NewDialer(proxykit.Config{
 conn, err := d.DialContext(ctx, "tcp", "example.com:443")
 ```
 
-### Auto-detect from env / WinINET
+### Auto-detect from env / system proxy
 
 ```go
 d := proxykit.NewDialer(proxykit.Config{AutoDetect: true})
 conn, err := d.DialContext(ctx, "tcp", "example.com:443")
 ```
 
-`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lower-case spellings) are honoured everywhere; on Windows the manual ProxyServer in `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` is read as well.
+`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lower-case spellings) are honoured everywhere; on Windows the manual ProxyServer in `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` is read as well; on Linux, `/etc/environment` and the GNOME (GSettings) and KDE (kioslaverc) desktop proxy settings are consulted too.
 
 ### Authenticated proxy
 
@@ -132,7 +132,7 @@ proxytest dial --proxy http://proxy:8080 example.com:443  # explicit
 - `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`).
 - `proxykit/transport` — concrete dialers: `Direct`, `Connect` (HTTP CONNECT), `SOCKS5`. Each implements the `Dialer` shape directly and is composable.
 - `proxykit/auth` — `Authenticator` interface plus `Basic`, `None`, `NTLM`, `Negotiate` (Windows SSPI; `errors.ErrUnsupported` elsewhere).
-- `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (Windows-only).
+- `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (Windows-only), and the Linux-only `EtcEnvironmentDetector`, `GNOMEDetector`, `KDEDetector`.
 
 ## License
 
