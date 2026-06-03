@@ -9,7 +9,7 @@ Small, dependency-light Go library for outbound connections through HTTP/HTTPS C
 | Area              | Support                                                           |
 |-------------------|-------------------------------------------------------------------|
 | Transports        | HTTP CONNECT (TCP+TLS), SOCKS5, Direct                            |
-| Authentication    | None, Basic, NTLM, Negotiate / Kerberos (Windows SSPI)            |
+| Authentication    | None, Basic, NTLM, Negotiate / Kerberos (Windows SSPI, Linux/macOS via gokrb5) |
 | Auto-detection    | `*_PROXY` env vars (any platform), Windows WinINET (HKCU), Linux `/etc/environment` + GNOME + KDE |
 | API               | `Dialer` (`net.Dial`-compatible), `http.RoundTripper` adapter     |
 | Platforms         | Windows, Linux, macOS — no cgo, fully static                      |
@@ -20,7 +20,7 @@ PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception /
 
 ### Roadmap
 
-- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); remaining: Linux/macOS Kerberos via `jcmturner/gokrb5`.
+- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR credential caches landed; KEYRING cache + a KDC integration test still in progress.
 - **v0.3+** — community-driven (SOCKS5 user/pass options, WinHTTP detection, macOS detection on request).
 
 ## Install
@@ -69,7 +69,7 @@ import (
 d := proxykit.NewDialer(proxykit.Config{
     Manual: "http://proxy.corp:8080",
     Auth: []auth.Authenticator{
-        auth.Negotiate("http/PROXY.CORP.LOCAL"), // SSPI on Windows; ErrUnsupported elsewhere
+        auth.Negotiate("HTTP/PROXY.CORP.LOCAL"), // Windows: SSPI · Linux/macOS: gokrb5 (Kerberos ticket)
         auth.NTLM("CORP", "alice", "secret"),
         auth.Basic("alice", "secret"),
     },
@@ -77,6 +77,23 @@ d := proxykit.NewDialer(proxykit.Config{
 ```
 
 Authenticators are tried in order against schemes the proxy advertises in `Proxy-Authenticate`. Userinfo embedded in the proxy URL (`http://user:pass@proxy:8080`) is automatically converted into a Basic authenticator and prepended to the chain.
+
+#### Negotiate / Kerberos across platforms
+
+`auth.Negotiate(spn)` is the same call everywhere; only the backend differs:
+
+- **Windows** — the SSPI subsystem, under the identity the process runs as.
+- **Linux / macOS** — [`jcmturner/gokrb5`](https://github.com/jcmturner/gokrb5)
+  mints an SPNEGO token from your Kerberos ticket. It reads the configuration in
+  `$KRB5_CONFIG` (else `/etc/krb5.conf`) and the credential cache named by
+  `$KRB5CCNAME` — `FILE:` and `DIR:` caches, defaulting to `/tmp/krb5cc_<uid>`.
+  Get a ticket first (e.g. `kinit alice@REALM`). `KEYRING:` caches are not yet
+  supported.
+
+`spn` must match the proxy's registered service principal (e.g.
+`HTTP/proxy.corp.local`). Kerberos is **on by default** on Linux/macOS; build
+with `-tags proxykit_nokerberos` to drop the gokrb5 dependency, after which
+`Negotiate` returns `errors.ErrUnsupported` on non-Windows.
 
 ### As an `http.RoundTripper`
 
@@ -132,7 +149,7 @@ proxytest dial --proxy http://proxy:8080 example.com:443  # explicit
 
 - `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`).
 - `proxykit/transport` — concrete dialers: `Direct`, `Connect` (HTTP CONNECT), `SOCKS5`. Each implements the `Dialer` shape directly and is composable.
-- `proxykit/auth` — `Authenticator` interface plus `Basic`, `None`, `NTLM`, `Negotiate` (Windows SSPI; `errors.ErrUnsupported` elsewhere).
+- `proxykit/auth` — `Authenticator` interface plus `Basic`, `None`, `NTLM`, `Negotiate` (Windows SSPI; Linux/macOS via `jcmturner/gokrb5`, opt out with `-tags proxykit_nokerberos`).
 - `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (Windows-only), and the Linux-only `EtcEnvironmentDetector`, `GNOMEDetector`, `KDEDetector`.
 
 ## License

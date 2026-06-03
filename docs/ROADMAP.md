@@ -49,7 +49,16 @@ Acceptance:
 
 **Title:** Negotiate (Kerberos) on Linux/macOS via jcmturner/gokrb5
 
-**Body:**
+**Status:** core landed — `auth/negotiate_other.go` replaced by a `gokrb5`
+backend (`negotiate_gokrb5.go`, gated `!windows && !proxykit_nokerberos`) with a
+`proxykit_nokerberos` opt-out stub; the Windows SSPI file is unchanged. It
+resolves `$KRB5_CONFIG`/`/etc/krb5.conf` and FILE/DIR credential caches
+(default `/tmp/krb5cc_<uid>`), unit-tested across the build-tag matrix. Kerberos
+is on by default on non-Windows. Remaining: KEYRING (kernel keyring) cache
+reading and the Dockerised-KDC integration test mirroring
+`TestConnect_NTLM_FullDance`.
+
+**Body** (original issue draft — the Status above records what landed):
 
 `auth.Negotiate` currently returns `errors.ErrUnsupported` outside
 Windows because SSPI is the only Kerberos backend wired in. Add a
@@ -63,7 +72,7 @@ Acceptance:
   implementation guarded by build tags; the Windows file is
   unchanged.
 - New build tag for users who explicitly opt out of the Kerberos
-  dependency (e.g. `//go:build !proxykit_kerberos`).
+  dependency: `proxykit_nokerberos` (build with `-tags proxykit_nokerberos`).
 - Integration test mirroring `TestConnect_NTLM_FullDance` against a
   mock proxy that emits an SPNEGO challenge.
 

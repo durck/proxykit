@@ -1,7 +1,7 @@
 // Package proxykit provides a small, dependency-light client for outbound
 // connections through HTTP CONNECT and SOCKS5 proxies, with optional
 // system-proxy auto-detection and pluggable authentication (Basic, NTLM,
-// Negotiate/SSPI on Windows).
+// Negotiate/Kerberos — Windows SSPI, or Linux/macOS via jcmturner/gokrb5).
 //
 // The package exposes a [Dialer] that satisfies the standard net.Dial
 // signature, plus an [http.RoundTripper] adapter for use with http.Client.

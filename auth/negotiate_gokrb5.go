@@ -24,8 +24,8 @@ import (
 // It mints a single SPNEGO token from the ambient Kerberos identity —
 // the credential cache named by KRB5CCNAME (or /tmp/krb5cc_<uid> when
 // unset) — using the configuration in $KRB5_CONFIG or /etc/krb5.conf.
-// FILE, DIR and (on Linux) KEYRING caches are understood; see
-// [resolveCCache].
+// FILE and DIR caches are supported; a KEYRING: prefix is recognised but
+// its reader is not yet implemented (see [resolveCCache]).
 //
 // Like the Windows SSPI backend it is single-round: it emits the SPNEGO
 // blob in the first Proxy-Authorization and the proxy either accepts
@@ -104,7 +104,7 @@ func loadKrb5Config() (*config.Config, error) {
 //	FILE:/path           a single ccache file (a bare /path is also FILE)
 //	DIR:/path            a collection; the primary subsidiary is used
 //	DIR::/path/tktXXXX    a specific subsidiary (the DIR:: form)
-//	KEYRING:name         the Linux kernel keyring (see loadCCacheFromKeyring)
+//	KEYRING:name         the Linux kernel keyring (not yet implemented)
 //
 // When KRB5CCNAME is unset it defaults to FILE:/tmp/krb5cc_<uid>.
 func resolveCCache() (*credentials.CCache, error) {
