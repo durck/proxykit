@@ -53,10 +53,10 @@ Acceptance:
 backend (`negotiate_gokrb5.go`, gated `!windows && !proxykit_nokerberos`) with a
 `proxykit_nokerberos` opt-out stub; the Windows SSPI file is unchanged. It
 resolves `$KRB5_CONFIG`/`/etc/krb5.conf` and FILE/DIR credential caches
-(default `/tmp/krb5cc_<uid>`), unit-tested across the build-tag matrix. Kerberos
-is on by default on non-Windows. Remaining: KEYRING (kernel keyring) cache
-reading and the Dockerised-KDC integration test mirroring
-`TestConnect_NTLM_FullDance`.
+(default `/tmp/krb5cc_<uid>`), plus Linux KEYRING caches using the MIT
+collection layout (`_krb*`, `krb_ccache:primary`, `user`/`big_key` credential
+payloads). Kerberos is on by default on non-Windows. Remaining: the
+Dockerised-KDC integration test mirroring `TestConnect_NTLM_FullDance`.
 
 **Body** (original issue draft — the Status above records what landed):
 

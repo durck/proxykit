@@ -20,7 +20,7 @@ PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception /
 
 ### Roadmap
 
-- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR credential caches landed; KEYRING cache + a KDC integration test still in progress.
+- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches and Linux `KEYRING:` caches landed; a KDC integration test is still in progress.
 - **v0.3+** — community-driven (SOCKS5 user/pass options, WinHTTP detection, macOS detection on request).
 
 ## Install
@@ -86,9 +86,9 @@ Authenticators are tried in order against schemes the proxy advertises in `Proxy
 - **Linux / macOS** — [`jcmturner/gokrb5`](https://github.com/jcmturner/gokrb5)
   mints an SPNEGO token from your Kerberos ticket. It reads the configuration in
   `$KRB5_CONFIG` (else `/etc/krb5.conf`) and the credential cache named by
-  `$KRB5CCNAME` — `FILE:` and `DIR:` caches, defaulting to `/tmp/krb5cc_<uid>`.
-  Get a ticket first (e.g. `kinit alice@REALM`). `KEYRING:` caches are not yet
-  supported.
+  `$KRB5CCNAME` — `FILE:` and `DIR:` caches on Linux/macOS, plus Linux
+  `KEYRING:` caches. When unset, it defaults to `/tmp/krb5cc_<uid>`.
+  Get a ticket first (e.g. `kinit alice@REALM`).
 
 `spn` must match the proxy's registered service principal (e.g.
 `HTTP/proxy.corp.local`). Kerberos is **on by default** on Linux/macOS; build

@@ -4,7 +4,9 @@ package auth
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -17,6 +19,75 @@ import (
 // field, principal testuser1@TEST.GOKRB5, 3 credentials).  It is inlined here
 // to avoid a test-only import of github.com/jcmturner/gokrb5/v8/test/testdata.
 const ccacheTestHex = "0504000c00010008000000060000000000000001000000010000000b544553542e474f4b5242350000000974657374757365723100000001000000010000000b544553542e474f4b5242350000000974657374757365723100000002000000020000000b544553542e474f4b524235000000066b72627467740000000b544553542e474f4b52423500120000002088b94319f2dcd1de20ebd3bf3174778769323bce76ef71fb37a8ba4be93c38df59665b8e59665b8e5967044e5967ad080040c1000000000000000000000000015a6182015630820152a003020105a10d1b0b544553542e474f4b524235a220301ea003020102a11730151b066b72627467741b0b544553542e474f4b524235a382011830820114a003020112a103020101a282010604820102ee32bb7e27ad6f71869be098c4002b291f370d26302c87ffa3eb670345a11fc113a9e5ab9e26ea659104b29e2a60c07dda559654c58aaf5f48bbb3bb9a238745861be336a0672554dac9b38126b2929ce9df2add185d1043c6dd89c7308b9def7b98ba7bcdcd1c00eeb5d99e273e1fe53b88c057106ec3dbcf2a86c38a4c1372418f1afb0227975747edf2172e23716ab5f6fa9a2ee5c0d94e9f66936df767498677861926812d1f887de6f44e5ebd93b63fd8313a499372ea9e889620bd0842bc8a8f8a17e5dea328c77b771cfcd49ac7afa4a9c7236efa30fec1b2072255543aee48cd935ece367e08d24f51bea4b407ace8ed7e67a8d5e1cb528eb16c7ebe7ac50000000000000001000000010000000b544553542e474f4b5242350000000974657374757365723100000000000000030000000c582d4341434845434f4e463a000000156b7262355f6363616368655f636f6e665f646174610000000a666173745f617661696c0000001e6b72627467742f544553542e474f4b52423540544553542e474f4b5242350000000000000000000000000000000000000000000000000000000000000000000000000000037965730000000000000001000000010000000b544553542e474f4b5242350000000974657374757365723100000001000000020000000b544553542e474f4b524235000000044854545000000010686f73742e746573742e676f6b726235001200000020fd325da3f905d743894e828de41b21af7876b6281b66d9e4bb2eefd64078b47659665b8e59665bce5967044e5967ad0800408900000000000000000000000001706182016c30820168a003020105a10d1b0b544553542e474f4b524235a2233021a003020101a11a30181b04485454501b10686f73742e746573742e676f6b726235a382012b30820127a003020112a103020101a282011904820115ad55d79858ce41647e835769b40540bc32ff4debe101217a7a024016697ee5ff758829940ca576905a260732c43c2996d96b83f9bff010fdbfc8f3bff51cef202a956f8d73d18c2c8865553f55229075270f42dca23d7618ff35e578a972d40746398efd478cf4f1094d99371273b3fbe5b95707011b446ff605ea8cb0e6631ea0ffdd7b562b5aa2de5dd455388e1aa18d8a3a8e81dab058e1b223410a752e5ec82797164dabafdbec8eeef7b072304e46d7d15b575f44cce69a368a9004612ba179b41d4655964933f7eb114a457aa1127291fc6d63deb271e5504de6fccca33260645ef5bd1ea301d74a8dbf751aa181ed92f5edb493d68222e1a34892035b88b6fb0ce104db23f7da22a8e73359d9c322b8e1cc00000000"
+
+func TestParseKeyringResidual(t *testing.T) {
+	cases := []struct {
+		in   string
+		want keyringResidual
+	}{
+		{"testccache", keyringResidual{anchor: keyringAnchorLegacy, collection: "testccache"}},
+		{"session:testccache", keyringResidual{anchor: keyringAnchorSession, collection: "testccache"}},
+		{"user:testccache", keyringResidual{anchor: keyringAnchorUser, collection: "testccache"}},
+		{"process:testccache", keyringResidual{anchor: keyringAnchorProcess, collection: "testccache"}},
+		{"thread:testccache", keyringResidual{anchor: keyringAnchorThread, collection: "testccache"}},
+		{"persistent:1000", keyringResidual{anchor: keyringAnchorPersistent, collection: "1000"}},
+		{"persistent:1000:krb_ccache_ABCD", keyringResidual{anchor: keyringAnchorPersistent, collection: "1000", subsidiary: "krb_ccache_ABCD"}},
+	}
+	for _, c := range cases {
+		got, err := parseKeyringResidual(c.in)
+		if err != nil {
+			t.Fatalf("parseKeyringResidual(%q): %v", c.in, err)
+		}
+		if got != c.want {
+			t.Errorf("parseKeyringResidual(%q) = %#v, want %#v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestParseKeyringResidual_Invalid(t *testing.T) {
+	for _, in := range []string{"", "bogus:testccache", "session:"} {
+		if got, err := parseKeyringResidual(in); err == nil {
+			t.Errorf("parseKeyringResidual(%q) = %#v, want error", in, got)
+		}
+	}
+}
+
+func TestParseKeyringPrimary(t *testing.T) {
+	got, err := parseKeyringPrimary(keyringPrimaryPayload("krb_ccache_ABCD"))
+	if err != nil {
+		t.Fatalf("parseKeyringPrimary: %v", err)
+	}
+	if got != "krb_ccache_ABCD" {
+		t.Errorf("primary = %q, want krb_ccache_ABCD", got)
+	}
+}
+
+func TestParseKeyringPrimary_Invalid(t *testing.T) {
+	badVersion := keyringPrimaryPayload("krb_ccache_ABCD")
+	binary.BigEndian.PutUint32(badVersion[:4], 2)
+
+	badLength := keyringPrimaryPayload("krb_ccache_ABCD")
+	binary.BigEndian.PutUint32(badLength[4:8], 999)
+
+	for name, payload := range map[string][]byte{
+		"short":      {1, 2, 3},
+		"version":    badVersion,
+		"length":     badLength,
+		"empty name": keyringPrimaryPayload(""),
+	} {
+		if got, err := parseKeyringPrimary(payload); err == nil {
+			t.Errorf("%s: parseKeyringPrimary = %q, want error", name, got)
+		}
+	}
+}
+
+func keyringPrimaryPayload(name string) []byte {
+	payload := make([]byte, 8+len(name))
+	binary.BigEndian.PutUint32(payload[:4], 1)
+	binary.BigEndian.PutUint32(payload[4:8], uint32(len(name)))
+	copy(payload[8:], name)
+	return payload
+}
 
 // TestAssembleCCacheBytes_NoCreds tests the pure assembly function with a
 // hand-crafted principal ("user1@REALM") and no credentials.
@@ -86,27 +157,11 @@ func TestAssembleCCacheBytes_Concatenation(t *testing.T) {
 //	         "__krb5_princ__" keyring key payload (no file-level preamble)
 //	[52+]    3 credential wire records
 func TestAssembleCCacheBytes_WithCredentials(t *testing.T) {
-	fullBytes, err := hex.DecodeString(ccacheTestHex)
-	if err != nil {
-		t.Fatalf("decode fixture: %v", err)
-	}
-
-	// principalOffset: 2 (magic+version) + 2 (hdr_len field) + 12 (hdr) = 16
-	// credentialOffset: 16 + 36 (principal wire bytes for testuser1@TEST.GOKRB5)
-	const (
-		principalOffset  = 16
-		credentialOffset = 52
-	)
-
-	if len(fullBytes) < credentialOffset {
-		t.Fatalf("fixture too short: %d bytes", len(fullBytes))
-	}
-
-	principalData := fullBytes[principalOffset:credentialOffset]
+	principalData, credentialBytes := ccacheFixtureParts(t)
 	// Pass all credential bytes as a single slice to validate that Unmarshal
 	// parses them correctly after the reassembled preamble+principal.
 	// Multi-element concatenation order is covered by TestAssembleCCacheBytes_Concatenation.
-	credentialData := [][]byte{fullBytes[credentialOffset:]}
+	credentialData := [][]byte{credentialBytes}
 
 	assembled := assembleCCacheBytes(principalData, credentialData)
 
@@ -124,6 +179,67 @@ func TestAssembleCCacheBytes_WithCredentials(t *testing.T) {
 	if len(cc.Credentials) != 3 {
 		t.Errorf("len(credentials) = %d, want 3", len(cc.Credentials))
 	}
+}
+
+func TestKeyringPayloadsAsFileBytes_BigKeyAndSpecialKeys(t *testing.T) {
+	principalData, credentialBytes := ccacheFixtureParts(t)
+	timeOffsets := []byte{0, 0, 0, 6, 0, 0, 0, 0}
+
+	assembled, err := keyringPayloadsAsFileBytes([]keyringPayload{
+		{keyType: keyringTypeUser, description: keyringSpecPrinc, data: principalData},
+		{keyType: keyringTypeUser, description: keyringTimeOffsets, data: timeOffsets},
+		{keyType: keyringTypeUser, description: keyringCollectionPrimary, data: keyringPrimaryPayload("krb_ccache_ABCD")},
+		{keyType: keyringTypeUser, description: keyringSpecCCacheSet, data: []byte("not a credential")},
+		{keyType: keyringTypeBigKey, description: "krbtgt/TEST.GOKRB5@TEST.GOKRB5", data: credentialBytes},
+	})
+	if err != nil {
+		t.Fatalf("keyringPayloadsAsFileBytes: %v", err)
+	}
+
+	wantHeader := []byte{0x05, 0x04, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x08, 0, 0, 0, 6, 0, 0, 0, 0}
+	if !bytes.HasPrefix(assembled, wantHeader) {
+		t.Fatalf("assembled header = % x, want prefix % x", assembled[:len(wantHeader)], wantHeader)
+	}
+
+	cc := new(credentials.CCache)
+	if err := cc.Unmarshal(assembled); err != nil {
+		t.Fatalf("Unmarshal assembled keyring bytes: %v", err)
+	}
+	if len(cc.Credentials) != 3 {
+		t.Errorf("len(credentials) = %d, want 3", len(cc.Credentials))
+	}
+}
+
+func TestKeyringPayloadsAsFileBytes_NoReadableCredentials(t *testing.T) {
+	principalData, _ := ccacheFixtureParts(t)
+	readErr := errors.New("permission denied")
+
+	_, err := keyringPayloadsAsFileBytes([]keyringPayload{
+		{keyType: keyringTypeUser, description: keyringSpecPrinc, data: principalData},
+		{keyType: keyringTypeBigKey, description: "krbtgt/TEST.GOKRB5@TEST.GOKRB5", err: readErr},
+	})
+	if err == nil || !strings.Contains(err.Error(), "no credentials readable") {
+		t.Fatalf("error = %v, want no credentials readable", err)
+	}
+}
+
+func ccacheFixtureParts(t *testing.T) (principalData []byte, credentialBytes []byte) {
+	t.Helper()
+	fullBytes, err := hex.DecodeString(ccacheTestHex)
+	if err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	// principalOffset: 2 (magic+version) + 2 (hdr_len field) + 12 (hdr) = 16
+	// credentialOffset: 16 + 36 (principal wire bytes for testuser1@TEST.GOKRB5)
+	const (
+		principalOffset  = 16
+		credentialOffset = 52
+	)
+	if len(fullBytes) < credentialOffset {
+		t.Fatalf("fixture too short: %d bytes", len(fullBytes))
+	}
+	return fullBytes[principalOffset:credentialOffset], fullBytes[credentialOffset:]
 }
 
 // TestLoadCCacheFromKeyring_SessionNotFound verifies that requesting a

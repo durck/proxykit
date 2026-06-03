@@ -104,7 +104,7 @@ func loadKrb5Config() (*config.Config, error) {
 //	FILE:/path           a single ccache file (a bare /path is also FILE)
 //	DIR:/path            a collection; the primary subsidiary is used
 //	DIR::/path/tktXXXX    a specific subsidiary (the DIR:: form)
-//	KEYRING:name         the Linux kernel keyring (not yet implemented)
+//	KEYRING:...          the Linux kernel keyring on Linux
 //
 // When KRB5CCNAME is unset it defaults to FILE:/tmp/krb5cc_<uid>.
 func resolveCCache() (*credentials.CCache, error) {
