@@ -10,7 +10,12 @@ verbatim.
 
 ## v0.2 — Linux detection + cross-platform Kerberos
 
-### Issue: detect Linux desktop proxy settings
+### Issue: detect Linux desktop proxy settings — done
+
+**Status:** implemented — `EtcEnvironmentDetector`, `GNOMEDetector`, and
+`KDEDetector` landed in the `detect` package, each Linux-gated with a
+non-Linux stub and pure, table-tested parsers. GNOME additionally reads
+stored credentials. `cmd/proxytest detect` lists the new sources.
 
 **Title:** Detect Linux desktop proxy settings (env, GNOME, KDE)
 
