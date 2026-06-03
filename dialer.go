@@ -122,16 +122,14 @@ func dialerForEntry(e proxyEntry, cfg Config) Dialer {
 			Auth:     authChain,
 		}
 	case "socks", "socks5":
-		u := e.url
-		if e.user != "" {
-			uCopy := *u
-			uCopy.User = url.UserPassword(e.user, e.pass)
-			u = &uCopy
-		}
-		return &transport.SOCKS5{
-			ProxyURL: u,
+		s := &transport.SOCKS5{
+			ProxyURL: e.url,
 			Timeout:  cfg.Timeout,
 		}
+		if e.user != "" {
+			s.Auth = &transport.SOCKS5Auth{Username: e.user, Password: e.pass}
+		}
+		return s
 	}
 	return nil
 }

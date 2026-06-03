@@ -21,7 +21,7 @@ PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception /
 ### Roadmap
 
 - **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches, Linux `KEYRING:` caches, and a Dockerised KDC integration test are in place.
-- **v0.3+** — community-driven (SOCKS5 user/pass options, WinHTTP detection, macOS detection on request).
+- **v0.3+** — community-driven; SOCKS5 user/pass typed option (`transport.SOCKS5.Auth`) landed. Pending: WinHTTP detection, macOS detection (on request).
 
 ## Install
 
@@ -101,6 +101,27 @@ KDC in Docker and validates the emitted SPNEGO token with a service keytab:
 ```sh
 go test -tags integration ./transport -run TestConnect_Negotiate_FullDance -count=1 -v
 ```
+
+### SOCKS5 credentials
+
+A `socks5://user:pass@host` URL works through `Config.Manual` like any other proxy. When building the transport directly, supply credentials via the typed `transport.SOCKS5.Auth` option instead of embedding them in the URL:
+
+```go
+import (
+    "net/url"
+
+    "github.com/durck/proxykit/transport"
+)
+
+proxyURL, _ := url.Parse("socks5://socks.corp:1080")
+d := &transport.SOCKS5{
+    ProxyURL: proxyURL,
+    Auth:     &transport.SOCKS5Auth{Username: "alice", Password: "s3cr3t"},
+}
+conn, err := d.DialContext(ctx, "tcp", "example.com:443")
+```
+
+`Auth` takes precedence over any userinfo in `ProxyURL`; leave it nil to fall back to `ProxyURL.User`.
 
 ### As an `http.RoundTripper`
 

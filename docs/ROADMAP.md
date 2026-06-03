@@ -81,8 +81,10 @@ Acceptance:
 
 ## v0.3+ — community-driven
 
-- SOCKS5 user/pass exposed as a typed option on `transport.SOCKS5`
-  (currently inferred from `ProxyURL.User`).
+- SOCKS5 user/pass exposed as a typed option on `transport.SOCKS5` —
+  **done** (#11). Credentials now flow through the typed `SOCKS5.Auth`
+  field, which takes precedence over `ProxyURL.User`; the manual/detected
+  path sets it instead of re-embedding credentials in the URL.
 - WinHTTP detection (`HKLM` per-machine path + `WinHttpGetIEProxy
   ConfigForCurrentUser`).
 - macOS detection (`SCDynamicStore` / `scutil --proxy`).

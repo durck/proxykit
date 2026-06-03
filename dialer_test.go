@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/durck/proxykit"
+	"github.com/durck/proxykit/transport"
 )
 
 // --- helpers ------------------------------------------------------------
@@ -204,6 +205,29 @@ func TestNewDialer_ManualSOCKS5(t *testing.T) {
 	defer conn.Close()
 	if !strings.Contains(roundTripGet(t, conn, backendAddr), "hello") {
 		t.Errorf("response did not contain hello")
+	}
+}
+
+func TestNewDialer_ManualSOCKS5_CredsUseTypedAuth(t *testing.T) {
+	clearProxyEnv(t)
+
+	// Credentials embedded in the manual URL must surface on the typed
+	// SOCKS5.Auth option and must NOT be re-embedded in ProxyURL — the
+	// whole point of exposing them as a typed option (issue #11).
+	d := proxykit.NewDialer(proxykit.Config{Manual: "socks5://alice:s3cr3t@socks.corp:1080"})
+
+	s, ok := d.(*transport.SOCKS5)
+	if !ok {
+		t.Fatalf("NewDialer returned %T, want *transport.SOCKS5", d)
+	}
+	if s.Auth == nil {
+		t.Fatal("SOCKS5.Auth is nil; credentials were not wired through the typed option")
+	}
+	if s.Auth.Username != "alice" || s.Auth.Password != "s3cr3t" {
+		t.Errorf("Auth = {%q, %q}, want {alice, s3cr3t}", s.Auth.Username, s.Auth.Password)
+	}
+	if s.ProxyURL.User != nil {
+		t.Errorf("ProxyURL.User = %v, want nil (creds must not be embedded in the URL)", s.ProxyURL.User)
 	}
 }
 
