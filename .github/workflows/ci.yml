@@ -39,3 +39,14 @@ jobs:
         run: GOOS=windows GOARCH=amd64 go build ./...
       - name: darwin/amd64
         run: GOOS=darwin GOARCH=amd64 go build ./...
+
+  kerberos-integration:
+    name: kerberos integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: true
+      - run: PROXYKIT_KRB5_REQUIRE_DOCKER=1 go test -tags integration ./transport -run TestConnect_Negotiate_FullDance -count=1 -v

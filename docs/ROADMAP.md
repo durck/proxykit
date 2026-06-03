@@ -55,8 +55,11 @@ backend (`negotiate_gokrb5.go`, gated `!windows && !proxykit_nokerberos`) with a
 resolves `$KRB5_CONFIG`/`/etc/krb5.conf` and FILE/DIR credential caches
 (default `/tmp/krb5cc_<uid>`), plus Linux KEYRING caches using the MIT
 collection layout (`_krb*`, `krb_ccache:primary`, `user`/`big_key` credential
-payloads). Kerberos is on by default on non-Windows. Remaining: the
-Dockerised-KDC integration test mirroring `TestConnect_NTLM_FullDance`.
+payloads). Kerberos is on by default on non-Windows. The Dockerised-KDC
+integration test now mirrors `TestConnect_NTLM_FullDance`: it gets a FILE
+ccache from a local MIT KDC, mints a proxy Negotiate token, validates it with
+`spnego.SPNEGOService` and the generated service keytab, then opens the
+tunnel.
 
 **Body** (original issue draft — the Status above records what landed):
 

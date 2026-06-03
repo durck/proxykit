@@ -20,7 +20,7 @@ PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception /
 
 ### Roadmap
 
-- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches and Linux `KEYRING:` caches landed; a KDC integration test is still in progress.
+- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches, Linux `KEYRING:` caches, and a Dockerised KDC integration test are in place.
 - **v0.3+** — community-driven (SOCKS5 user/pass options, WinHTTP detection, macOS detection on request).
 
 ## Install
@@ -94,6 +94,13 @@ Authenticators are tried in order against schemes the proxy advertises in `Proxy
 `HTTP/proxy.corp.local`). Kerberos is **on by default** on Linux/macOS; build
 with `-tags proxykit_nokerberos` to drop the gokrb5 dependency, after which
 `Negotiate` returns `errors.ErrUnsupported` on non-Windows.
+
+The Kerberos proxy path has a tagged integration test that starts a local MIT
+KDC in Docker and validates the emitted SPNEGO token with a service keytab:
+
+```sh
+go test -tags integration ./transport -run TestConnect_Negotiate_FullDance -count=1 -v
+```
 
 ### As an `http.RoundTripper`
 
