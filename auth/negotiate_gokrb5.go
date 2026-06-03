@@ -24,8 +24,8 @@ import (
 // It mints a single SPNEGO token from the ambient Kerberos identity —
 // the credential cache named by KRB5CCNAME (or /tmp/krb5cc_<uid> when
 // unset) — using the configuration in $KRB5_CONFIG or /etc/krb5.conf.
-// FILE and DIR caches are supported; a KEYRING: prefix is recognised but
-// its reader is not yet implemented (see [resolveCCache]).
+// FILE, DIR, and KEYRING (Linux kernel keyring) caches are supported on
+// Linux; see [resolveCCache] and [loadCCacheFromKeyring].
 //
 // Like the Windows SSPI backend it is single-round: it emits the SPNEGO
 // blob in the first Proxy-Authorization and the proxy either accepts
