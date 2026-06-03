@@ -41,8 +41,14 @@ func gnomeCandidates(v gnomeProxy) []Candidate {
 		if !ok {
 			return
 		}
+		// Collapse http/https that point at one proxy. Dedup is by URL
+		// only, deliberately not by User: the http candidate is added
+		// first and may carry credentials, so an identical-endpoint https
+		// (which has no credentials of its own) must fold into it and keep
+		// the authed one. Adding a User check here would re-emit the same
+		// endpoint twice (authed + unauthed).
 		for _, e := range out {
-			if e.URL == c.URL { // collapse http/https pointing at one proxy
+			if e.URL == c.URL {
 				return
 			}
 		}
