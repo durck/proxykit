@@ -1,5 +1,9 @@
 # proxykit roadmap
 
+> **Status (2026-06-04): complete.** Every item below has shipped — see
+> [`CHANGELOG.md`](../CHANGELOG.md) for the consolidated history. This file is
+> kept as a record of how the v0.2–v0.3 work was scoped.
+
 Tracks deferred work after `v0.1`. Each entry is sized to fit a single
 GitHub issue once the repo lands on a remote — copy-paste the body
 verbatim.
@@ -106,7 +110,7 @@ Acceptance:
 
 ## Out-of-band
 
-- `git tag v0.1.0` and push the tag once the repo has a public
-  remote so `pkg.go.dev` indexes the module.
+- `git tag v0.1.0` and push the tag so `pkg.go.dev` indexes the module —
+  **done** (tag `v0.1.0`, 2026-05-06).
 - Add a `BenchmarkSOCKS5_Dial` companion to the existing
-  `BenchmarkConnect_Dial` / `BenchmarkNTLM_Handshake`.
+  `BenchmarkConnect_Dial` / `BenchmarkNTLM_Handshake` — **done** (#4).

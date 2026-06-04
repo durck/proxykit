@@ -76,7 +76,11 @@ func cmdDetect(args []string) int {
 
 	fmt.Printf("%-40s  %-10s  %s\n", "URL", "FROM", "USER")
 	for _, c := range candidates {
-		fmt.Printf("%-40s  %-10s  %s\n", c.URL, c.From, c.User)
+		shown := c.URL
+		if c.PACURL != "" {
+			shown = "PAC " + c.PACURL // a PAC candidate carries no proxy URL
+		}
+		fmt.Printf("%-40s  %-10s  %s\n", shown, c.From, c.User)
 	}
 	return 0
 }

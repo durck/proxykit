@@ -2,7 +2,7 @@
 
 Small, dependency-light Go library for outbound connections through HTTP/HTTPS CONNECT and SOCKS5 proxies, with optional system-proxy auto-detection and pluggable authentication.
 
-> **Status:** `v0.1` complete. The public API is unstable until `v1.0` — expect occasional renames during the `v0.x` line.
+> **Status:** all planned `v0.1`–`v0.3` features are implemented (see [`CHANGELOG.md`](CHANGELOG.md)). The public API is unstable until `v1.0` — expect occasional renames during the `v0.x` line.
 
 ## Features
 
@@ -15,14 +15,13 @@ Small, dependency-light Go library for outbound connections through HTTP/HTTPS C
 | API               | `Dialer` (`net.Dial`-compatible), `http.RoundTripper` adapter     |
 | Platforms         | Windows, Linux, macOS — no cgo, fully static                      |
 
-### Out of scope (v0.1)
+### Out of scope
 
-SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception / MITM, connection pooling, retry / circuit breaker, BSD detection. (PAC / WPAD landed later as an opt-in build — see below.)
+SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception / MITM, connection pooling, retry / circuit breaker, BSD detection, and DHCP-based WPAD (option 252).
 
-### Roadmap
+### Status
 
-- **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches, Linux `KEYRING:` caches, and a Dockerised KDC integration test are in place.
-- **v0.3+** — community-driven; SOCKS5 user/pass typed option (`transport.SOCKS5.Auth`), Windows WinHTTP detection (HKLM + IE), macOS detection (`scutil --proxy`), and PAC/WPAD evaluation (opt-in `-tags proxykit_pac`) have all landed.
+All roadmap items through `v0.3` are implemented: cross-platform detection (env vars, Windows WinINET + WinHTTP, Linux env-file/GNOME/KDE, macOS scutil), Negotiate/Kerberos on Linux/macOS via gokrb5, the typed SOCKS5 credential option, and opt-in PAC/WPAD. See [`CHANGELOG.md`](CHANGELOG.md) for the full history and [`docs/ROADMAP.md`](docs/ROADMAP.md) for how each piece was scoped.
 
 ## Install
 
@@ -57,7 +56,7 @@ d := proxykit.NewDialer(proxykit.Config{AutoDetect: true})
 conn, err := d.DialContext(ctx, "tcp", "example.com:443")
 ```
 
-`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lower-case spellings) are honoured everywhere; on Windows the manual ProxyServer in `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` is read as well; on Linux, `/etc/environment` and the GNOME (GSettings) and KDE (kioslaverc) desktop proxy settings are consulted too.
+`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lower-case spellings) are honoured everywhere. Beyond env vars, proxykit reads the Windows WinINET (per-user `HKCU`) and WinHTTP (per-machine `HKLM` + the IE config) proxy settings; on Linux, `/etc/environment` plus the GNOME (GSettings) and KDE (kioslaverc) desktop settings; and on macOS, the system configuration via `scutil`. Built with `-tags proxykit_pac`, a system-configured PAC URL is honoured too (see [PAC / WPAD](#pac--wpad-opt-in)).
 
 ### Authenticated proxy
 
@@ -196,12 +195,30 @@ proxytest detect
 # http://proxy.corp:8080                    env
 # socks5://socks.corp:1080                  wininet
 # http://machine-proxy.corp:8080            winhttp
+# PAC http://wpad.corp/proxy.pac            winhttp
 # (on Linux, linux/etc-environment, linux/gnome and linux/kde rows appear too; on macOS, a macos row)
 
 proxytest dial example.com:443                            # direct
 proxytest dial --auto example.com:443                     # detect.All
 proxytest dial --proxy http://proxy:8080 example.com:443  # explicit
 ```
+
+## Development
+
+```sh
+go test ./...                      # default build
+go test -tags proxykit_pac ./...   # with PAC/WPAD enabled
+go vet ./... && go build ./...
+```
+
+Two opt-in build tags toggle optional dependencies:
+
+| Tag | Effect |
+|-----|--------|
+| `proxykit_pac` | Enable PAC/WPAD evaluation; adds the pure-Go [`dop251/goja`](https://github.com/dop251/goja) JS engine. **Off by default.** |
+| `proxykit_nokerberos` | Drop the `jcmturner/gokrb5` dependency; `auth.Negotiate` then returns `errors.ErrUnsupported` on non-Windows. Kerberos is **on by default.** |
+
+The default build pulls in no JS engine and no cgo, staying fully static (CI guards that `goja` never enters the default dependency graph). CI runs `go vet`, `go test -race`, and `go build` in both build modes across Windows, Linux, and macOS, plus cross-builds and a Dockerised-KDC Kerberos integration test.
 
 ## Architecture
 

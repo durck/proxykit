@@ -1,5 +1,9 @@
 # proxykit v0.1 — Implementation Plan
 
+> **Historical.** This is the completed `v0.1` implementation plan (shipped as
+> tag `v0.1.0`). Later work (v0.2–v0.3) is tracked in [`ROADMAP.md`](ROADMAP.md)
+> and [`../CHANGELOG.md`](../CHANGELOG.md). Kept for provenance.
+
 12 atomic commits. Each must leave the tree green: `go vet ./...`, `go test -race ./...`, and cross-build for windows/linux all pass.
 
 ## Current step
