@@ -7,6 +7,8 @@ API is unstable until `v1.0`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-04
+
 ### Added
 
 - **PAC / WPAD** (opt-in `-tags proxykit_pac`): per-destination proxy selection
@@ -40,6 +42,10 @@ API is unstable until `v1.0`.
 
 ### Fixed
 
+- `ParseProxyURL` now rejects malformed input it previously accepted (returning
+  a bogus URL with a nil error): an empty hostname (e.g. `http://:8080`, which
+  Go's dialer treats as localhost) and a scheme-carrying but unparseable URL
+  (e.g. `http://[::1`, `http:// `).
 - `fallbackDialer` now short-circuits when the context is already cancelled. (#6)
 
 ## [0.1.0] - 2026-05-06
@@ -55,5 +61,6 @@ Initial release.
   WinINET (HKCU) registry.
 - `cmd/proxytest` diagnostic CLI and runnable `examples/`.
 
-[Unreleased]: https://github.com/durck/proxykit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/durck/proxykit/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/durck/proxykit/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/durck/proxykit/releases/tag/v0.1.0
