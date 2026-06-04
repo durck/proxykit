@@ -1,36 +1,15 @@
-package proxykit
+package pac
 
 import (
-	"context"
 	"os"
 	"strings"
 
 	"golang.org/x/net/publicsuffix"
 )
 
-// wpadScript performs active DNS-WPAD discovery when Config.WPAD is set: it
-// probes http://wpad.<domain>/wpad.dat for each candidate domain derived
-// from the host's FQDN (and, on unix, the resolv.conf search list) and
-// returns the first script that loads. Disabled (returns "") otherwise.
-//
-// SECURITY: a rogue "wpad" host on the local network can serve an
-// attacker-controlled PAC, so this runs only behind the explicit
-// Config.WPAD opt-in, never via AutoDetect.
-func (p *pacDialer) wpadScript(ctx context.Context) (script, source string) {
-	if !p.wpad {
-		return "", ""
-	}
-	for _, u := range wpadCandidateURLs() {
-		if s := fetchPAC(ctx, u, p.cfg.OnLog); s != "" {
-			return s, "wpad " + u
-		}
-	}
-	return "", ""
-}
-
-// wpadCandidateURLs is a seam (overridden in tests) returning the ordered
-// list of wpad.dat URLs to probe.
-var wpadCandidateURLs = systemWPADURLs
+// CandidateWPADURLs is the seam (overridable in tests) returning the
+// ordered list of wpad.dat URLs to probe for active DNS-WPAD discovery.
+var CandidateWPADURLs = systemWPADURLs
 
 func systemWPADURLs() []string {
 	domains := wpadDomains(systemHostname(), systemSearchDomains())

@@ -9,6 +9,7 @@ import (
 
 	"github.com/durck/proxykit/auth"
 	"github.com/durck/proxykit/detect"
+	"github.com/durck/proxykit/internal/pac"
 	"github.com/durck/proxykit/transport"
 )
 
@@ -51,7 +52,7 @@ func NewDialer(cfg Config) Dialer {
 	// PAC is skipped when Manual is set. Without -tags proxykit_pac a
 	// configured PAC source is logged and ignored (degrade to static).
 	if cfg.Manual == "" && hasPACSource(cfg, pacURLs) {
-		if !pacSupported {
+		if !pac.Supported {
 			logf(cfg.OnLog, "warn", "proxykit: a PAC source is configured but this build lacks PAC support; rebuild with -tags proxykit_pac")
 			return static
 		}

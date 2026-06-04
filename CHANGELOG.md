@@ -7,6 +7,13 @@ API is unstable until `v1.0`.
 
 ## [Unreleased]
 
+### Changed
+
+- Internal refactor: the PAC/WPAD engine (script evaluation, fetching, and
+  DNS-WPAD discovery) moved out of the root package into `internal/pac`,
+  leaving the root focused on dialer assembly. No public API or behaviour
+  change; the default build stays cgo-free and goja-free.
+
 ## [0.3.0] - 2026-06-04
 
 ### Added

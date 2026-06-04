@@ -1,6 +1,6 @@
 //go:build proxykit_pac
 
-package proxykit
+package pac
 
 import (
 	"context"
@@ -18,12 +18,12 @@ const pacEvalTimeout = 5 * time.Second
 
 var errPACTimeout = errors.New("proxykit: PAC evaluation timed out")
 
-// This file is compiled only with -tags proxykit_pac. It wires
-// newPACEngine to the real goja-backed evaluator, pulling in the JS
-// engine dependency. The default build uses pac_stub.go instead.
+// This file is compiled only with -tags proxykit_pac. It wires NewEngine
+// to the real goja-backed evaluator, pulling in the JS engine dependency.
+// The default build uses stub.go instead.
 func init() {
-	pacSupported = true
-	newPACEngine = func(script string) (pacEngine, error) {
+	Supported = true
+	NewEngine = func(script string) (Engine, error) {
 		return compilePAC(script, systemPACResolver{})
 	}
 }
@@ -31,8 +31,8 @@ func init() {
 // gojaPACEngine evaluates FindProxyForURL on a single goja.Runtime.
 // goja.Runtime is NOT safe for concurrent use, so every evaluation is
 // serialized by mu. The pure path is microsecond-fast; network helpers
-// are independently bounded (pacResolverTimeout) and the pacDialer
-// memoizes results, so the lock stays cold under load.
+// are independently bounded (pacResolverTimeout) and the caller memoizes
+// results, so the lock stays cold under load.
 type gojaPACEngine struct {
 	mu sync.Mutex
 	vm *goja.Runtime
@@ -41,7 +41,7 @@ type gojaPACEngine struct {
 
 // compilePAC compiles a PAC script, installs the host functions backed by
 // res, and locates the FindProxyForURL (or FindProxyForURLEx) entry point.
-func compilePAC(script string, res pacResolver) (pacEngine, error) {
+func compilePAC(script string, res pacResolver) (Engine, error) {
 	prog, err := goja.Compile("proxy.pac", script, false) // non-strict: corporate PACs are sloppy ES3/5
 	if err != nil {
 		return nil, fmt.Errorf("proxykit: compile PAC: %w", err)
@@ -62,10 +62,10 @@ func compilePAC(script string, res pacResolver) (pacEngine, error) {
 	return &gojaPACEngine{vm: vm, fn: fn}, nil
 }
 
-// findProxy runs FindProxyForURL(rawURL, host). A watchdog interrupts the
+// FindProxy runs FindProxyForURL(rawURL, host). A watchdog interrupts the
 // runtime if evaluation exceeds the deadline (the sooner of ctx and
 // pacEvalTimeout), so a buggy PAC cannot hang the dial.
-func (e *gojaPACEngine) findProxy(ctx context.Context, rawURL, host string) (string, error) {
+func (e *gojaPACEngine) FindProxy(ctx context.Context, rawURL, host string) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -108,7 +108,7 @@ func (e *gojaPACEngine) findProxy(ctx context.Context, rawURL, host string) (str
 	return v.String(), nil
 }
 
-// close releases engine resources. Currently a no-op: the runtime holds no
+// Close releases engine resources. Currently a no-op: the runtime holds no
 // background goroutines (the watchdog is per-call), so there is nothing to
 // release. Kept on the interface for forward compatibility.
-func (e *gojaPACEngine) close() {}
+func (e *gojaPACEngine) Close() {}

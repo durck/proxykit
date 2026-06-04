@@ -2,46 +2,19 @@ package proxykit
 
 import (
 	"context"
-	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/durck/proxykit/internal/pac"
 	"github.com/durck/proxykit/transport"
 )
 
-// pacEngine evaluates a compiled PAC (Proxy Auto-Config) script's
-// FindProxyForURL for a destination. It is implemented only in binaries
-// built with -tags proxykit_pac; the default build wires a stub whose
-// constructor reports errors.ErrUnsupported.
-type pacEngine interface {
-	// findProxy runs FindProxyForURL(rawURL, host) and returns its raw
-	// result string, e.g. "PROXY proxy:8080; DIRECT".
-	findProxy(ctx context.Context, rawURL, host string) (string, error)
-
-	// close releases any resources (e.g. the JS runtime watchdog).
-	close()
-}
-
-// newPACEngine compiles a PAC script into a pacEngine. It is assigned at
-// init time by pac_eval.go (//go:build proxykit_pac) or pac_stub.go
-// (//go:build !proxykit_pac), so it is never nil after package init.
-var newPACEngine func(script string) (pacEngine, error)
-
-// pacSupported is set true by pac_eval.go's init under -tags proxykit_pac.
-// The default build leaves it false, so NewDialer degrades a configured
-// PAC source to the static path with a warning rather than silently doing
-// nothing.
-var pacSupported bool
-
 const (
-	pacCacheTTL     = 30 * time.Second
-	pacCacheMax     = 1024
-	pacFetchTimeout = 10 * time.Second
-	pacMaxSize      = 1 << 20 // 1 MiB
+	pacCacheTTL = 30 * time.Second
+	pacCacheMax = 1024
 )
 
 // hasPACSource reports whether any PAC source is configured: an inline
@@ -55,7 +28,9 @@ func hasPACSource(cfg Config, detectedPACURLs []string) bool {
 // first use, so NewDialer never blocks on the network; per-host results
 // are memoized for pacCacheTTL to keep evaluation off the hot path. When
 // the engine cannot be built, or a result yields nothing usable, it falls
-// back to the static/Direct dialer.
+// back to the static/Direct dialer. The PAC protocol itself (engine,
+// fetch, WPAD discovery) lives in internal/pac; this type only assembles
+// transport dialers from the PAC's per-host decision.
 type pacDialer struct {
 	cfg         Config
 	inline      string
@@ -65,7 +40,7 @@ type pacDialer struct {
 	fallback    Dialer
 
 	once   sync.Once
-	engine pacEngine // nil after once means "always use fallback"
+	engine pac.Engine // nil after once means "always use fallback"
 
 	mu    sync.Mutex
 	cache map[string]pacCacheEntry
@@ -94,7 +69,7 @@ func (p *pacDialer) DialContext(ctx context.Context, network, address string) (n
 		// Fetch+compile once on an INDEPENDENT context, so a single
 		// short-lived or cancelled first dial cannot permanently poison the
 		// engine for every later dial.
-		bctx, cancel := context.WithTimeout(context.Background(), pacFetchTimeout)
+		bctx, cancel := context.WithTimeout(context.Background(), pac.FetchTimeout)
 		defer cancel()
 		p.engine = p.buildEngine(bctx)
 	})
@@ -142,8 +117,8 @@ func (p *pacDialer) dialerForHost(ctx context.Context, scheme, host string) Dial
 
 // pacChain evaluates the PAC for scheme://host and turns its result into a
 // dialer. On eval error or an empty/unusable result it returns fallback.
-func pacChain(ctx context.Context, eng pacEngine, scheme, host string, cfg Config, fallback Dialer) Dialer {
-	res, err := eng.findProxy(ctx, scheme+"://"+host, host)
+func pacChain(ctx context.Context, eng pac.Engine, scheme, host string, cfg Config, fallback Dialer) Dialer {
+	res, err := eng.FindProxy(ctx, scheme+"://"+host, host)
 	if err != nil {
 		logf(cfg.OnLog, "warn", "proxykit: PAC eval for %q failed: %v", host, err)
 		return fallback
@@ -171,13 +146,13 @@ func pacChain(ctx context.Context, eng pacEngine, scheme, host string, cfg Confi
 
 // buildEngine resolves the PAC script source and compiles it. Returns nil
 // (→ fallback) when no script loads or compilation fails.
-func (p *pacDialer) buildEngine(ctx context.Context) pacEngine {
+func (p *pacDialer) buildEngine(ctx context.Context) pac.Engine {
 	script, src := p.pacScript(ctx)
 	if script == "" {
 		logf(p.cfg.OnLog, "warn", "proxykit: no PAC script could be loaded; routing statically")
 		return nil
 	}
-	eng, err := newPACEngine(script)
+	eng, err := pac.NewEngine(script)
 	if err != nil {
 		logf(p.cfg.OnLog, "warn", "proxykit: PAC compile failed (%s): %v", src, err)
 		return nil
@@ -188,57 +163,43 @@ func (p *pacDialer) buildEngine(ctx context.Context) pacEngine {
 
 // pacScript loads the PAC script body from the highest-precedence source:
 // inline, then the explicit URL, then any detected OS PAC URL, then WPAD
-// discovery (wired in wpad.go).
+// discovery (wpadScript).
 func (p *pacDialer) pacScript(ctx context.Context) (script, source string) {
 	if p.inline != "" {
 		return p.inline, "inline"
 	}
 	if p.pacURL != "" {
-		if s := fetchPAC(ctx, p.pacURL, p.cfg.OnLog); s != "" {
+		if s := pac.FetchScript(ctx, p.pacURL, p.cfg.OnLog); s != "" {
 			return s, "url " + p.pacURL
 		}
 	}
 	for _, u := range p.detectedPAC {
-		if s := fetchPAC(ctx, u, p.cfg.OnLog); s != "" {
+		if s := pac.FetchScript(ctx, u, p.cfg.OnLog); s != "" {
 			return s, "detected " + u
 		}
 	}
 	return p.wpadScript(ctx)
 }
 
-// fetchPAC downloads a PAC script directly — never through a proxy, to
-// avoid recursing into proxy selection. Bounded by time and size; returns
-// "" on any failure (logged via log).
-func fetchPAC(ctx context.Context, pacURL string, log func(level, msg string)) string {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pacURL, nil)
-	if err != nil {
-		logf(log, "warn", "proxykit: bad PAC URL %q: %v", pacURL, err)
-		return ""
+// wpadScript performs active DNS-WPAD discovery when Config.WPAD is set: it
+// probes http://wpad.<domain>/wpad.dat for each candidate domain (derived
+// in internal/pac from the host's FQDN and, on unix, the resolv.conf search
+// list) and returns the first script that loads. Disabled (returns "")
+// otherwise.
+//
+// SECURITY: a rogue "wpad" host on the local network can serve an
+// attacker-controlled PAC, so this runs only behind the explicit
+// Config.WPAD opt-in, never via AutoDetect.
+func (p *pacDialer) wpadScript(ctx context.Context) (script, source string) {
+	if !p.wpad {
+		return "", ""
 	}
-	client := &http.Client{
-		Timeout: pacFetchTimeout,
-		Transport: &http.Transport{
-			Proxy:               nil, // never use a proxy to fetch the PAC
-			DialContext:         (&net.Dialer{Timeout: pacFetchTimeout}).DialContext,
-			TLSHandshakeTimeout: pacFetchTimeout,
-		},
+	for _, u := range pac.CandidateWPADURLs() {
+		if s := pac.FetchScript(ctx, u, p.cfg.OnLog); s != "" {
+			return s, "wpad " + u
+		}
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		logf(log, "warn", "proxykit: fetch PAC %q: %v", pacURL, err)
-		return ""
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		logf(log, "warn", "proxykit: fetch PAC %q: status %s", pacURL, resp.Status)
-		return ""
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, pacMaxSize))
-	if err != nil {
-		logf(log, "warn", "proxykit: read PAC %q: %v", pacURL, err)
-		return ""
-	}
-	return string(body)
+	return "", ""
 }
 
 // pacResult is one hop from a parsed FindProxyForURL result: either a

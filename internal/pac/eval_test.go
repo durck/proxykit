@@ -1,6 +1,6 @@
 //go:build proxykit_pac
 
-package proxykit
+package pac
 
 import (
 	"context"
@@ -17,20 +17,20 @@ type fakeResolver struct {
 }
 
 func (f fakeResolver) lookupIP(host string) []net.IP { return f.ips[host] }
-func (f fakeResolver) myIP() net.IP                   { return f.my }
+func (f fakeResolver) myIP() net.IP                  { return f.my }
 
-func TestNewPACEngine_Wired(t *testing.T) {
-	if newPACEngine == nil {
-		t.Fatal("newPACEngine nil; eval init did not run under proxykit_pac")
+func TestNewEngine_Wired(t *testing.T) {
+	if NewEngine == nil {
+		t.Fatal("NewEngine nil; eval init did not run under proxykit_pac")
 	}
-	eng, err := newPACEngine(`function FindProxyForURL(url, host){ return "DIRECT"; }`)
+	eng, err := NewEngine(`function FindProxyForURL(url, host){ return "DIRECT"; }`)
 	if err != nil {
-		t.Fatalf("newPACEngine: %v", err)
+		t.Fatalf("NewEngine: %v", err)
 	}
-	defer eng.close()
-	got, err := eng.findProxy(context.Background(), "https://x/", "x")
+	defer eng.Close()
+	got, err := eng.FindProxy(context.Background(), "https://x/", "x")
 	if err != nil || got != "DIRECT" {
-		t.Fatalf("findProxy = %q, %v; want DIRECT, nil", got, err)
+		t.Fatalf("FindProxy = %q, %v; want DIRECT, nil", got, err)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestCompilePAC_RoutingWithHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compilePAC: %v", err)
 	}
-	defer eng.close()
+	defer eng.Close()
 
 	cases := []struct{ host, want string }{
 		{"internal", "DIRECT"},
@@ -59,13 +59,13 @@ func TestCompilePAC_RoutingWithHelpers(t *testing.T) {
 		{"x.org", "PROXY def:3128"},
 	}
 	for _, c := range cases {
-		got, err := eng.findProxy(context.Background(), "https://"+c.host+"/", c.host)
+		got, err := eng.FindProxy(context.Background(), "https://"+c.host+"/", c.host)
 		if err != nil {
-			t.Errorf("findProxy(%q): %v", c.host, err)
+			t.Errorf("FindProxy(%q): %v", c.host, err)
 			continue
 		}
 		if got != c.want {
-			t.Errorf("findProxy(%q) = %q, want %q", c.host, got, c.want)
+			t.Errorf("FindProxy(%q) = %q, want %q", c.host, got, c.want)
 		}
 	}
 }
@@ -75,10 +75,10 @@ func TestCompilePAC_FindProxyForURLEx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compilePAC: %v", err)
 	}
-	defer eng.close()
-	got, err := eng.findProxy(context.Background(), "https://x/", "x")
+	defer eng.Close()
+	got, err := eng.FindProxy(context.Background(), "https://x/", "x")
 	if err != nil || got != "PROXY ex:1" {
-		t.Fatalf("findProxy = %q, %v; want 'PROXY ex:1', nil", got, err)
+		t.Fatalf("FindProxy = %q, %v; want 'PROXY ex:1', nil", got, err)
 	}
 }
 
@@ -102,12 +102,12 @@ func TestGojaPACEngine_Timeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compilePAC: %v", err)
 	}
-	defer eng.close()
+	defer eng.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if _, err := eng.findProxy(ctx, "https://slow/", "slow"); err == nil {
+	if _, err := eng.FindProxy(ctx, "https://slow/", "slow"); err == nil {
 		t.Fatal("expected an interrupt error from the runaway PAC")
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
@@ -116,7 +116,7 @@ func TestGojaPACEngine_Timeout(t *testing.T) {
 
 	// Regression guard for the watchdog interrupt-leak: a later eval must
 	// succeed, proving ClearInterrupt ran after the watchdog goroutine exited.
-	got, err := eng.findProxy(context.Background(), "https://fast/", "fast")
+	got, err := eng.FindProxy(context.Background(), "https://fast/", "fast")
 	if err != nil {
 		t.Fatalf("post-timeout eval failed (interrupt leaked?): %v", err)
 	}
@@ -132,15 +132,15 @@ func TestGojaPACEngine_Concurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compilePAC: %v", err)
 	}
-	defer eng.close()
+	defer eng.Close()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 24; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if got, err := eng.findProxy(context.Background(), "https://x/", "x"); err != nil || got != "PROXY p:8080" {
-				t.Errorf("findProxy = %q, %v", got, err)
+			if got, err := eng.FindProxy(context.Background(), "https://x/", "x"); err != nil || got != "PROXY p:8080" {
+				t.Errorf("FindProxy = %q, %v", got, err)
 			}
 		}()
 	}

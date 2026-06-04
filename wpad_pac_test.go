@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/durck/proxykit/internal/pac"
 )
 
 // TestWPADDiscoveryE2E drives the full WPAD path end to end: discovery (via
@@ -20,14 +22,14 @@ func TestWPADDiscoveryE2E(t *testing.T) {
 	var hits int32
 	proxyAddr := startConnectProxy(t, &hits)
 
-	pac := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	pacSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, `function FindProxyForURL(url, host){ return "PROXY `+proxyAddr+`"; }`)
 	}))
-	defer pac.Close()
+	defer pacSrv.Close()
 
-	orig := wpadCandidateURLs
-	wpadCandidateURLs = func() []string { return []string{pac.URL + "/wpad.dat"} }
-	defer func() { wpadCandidateURLs = orig }()
+	orig := pac.CandidateWPADURLs
+	pac.CandidateWPADURLs = func() []string { return []string{pacSrv.URL + "/wpad.dat"} }
+	defer func() { pac.CandidateWPADURLs = orig }()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, "wpad-ok")

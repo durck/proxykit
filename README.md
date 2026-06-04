@@ -222,7 +222,8 @@ The default build pulls in no JS engine and no cgo, staying fully static (CI gua
 
 ## Architecture
 
-- `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`) and the opt-in PAC/WPAD engine (`pac*.go`, `wpad.go`; goja behind `-tags proxykit_pac`, a stub otherwise).
+- `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`) and the PAC/WPAD integration (`pac.go`: the per-destination `pacDialer` that assembles transports from a PAC decision).
+- `proxykit/internal/pac` — the opt-in PAC/WPAD engine: `FindProxyForURL` evaluation (goja behind `-tags proxykit_pac`, a stub otherwise), PAC fetching, and DNS-WPAD discovery. A leaf package, so the JS engine never enters the default dependency graph.
 - `proxykit/transport` — concrete dialers: `Direct`, `Connect` (HTTP CONNECT), `SOCKS5`. Each implements the `Dialer` shape directly and is composable.
 - `proxykit/auth` — `Authenticator` interface plus `Basic`, `None`, `NTLM`, `Negotiate` (Windows SSPI; Linux/macOS via `jcmturner/gokrb5`, opt out with `-tags proxykit_nokerberos`).
 - `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (HKCU) + `WinHTTPDetector` (HKLM + IE) (Windows-only), the Linux-only `EtcEnvironmentDetector`, `GNOMEDetector`, `KDEDetector`, and the macOS-only `MacOSDetector` (`scutil --proxy`).

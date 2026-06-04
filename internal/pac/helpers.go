@@ -1,6 +1,6 @@
 //go:build proxykit_pac
 
-package proxykit
+package pac
 
 import (
 	"context"

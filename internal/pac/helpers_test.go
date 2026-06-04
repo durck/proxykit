@@ -1,6 +1,6 @@
 //go:build proxykit_pac
 
-package proxykit
+package pac
 
 import (
 	"net"
@@ -120,9 +120,9 @@ func TestPacTimeRange(t *testing.T) {
 		{[]string{"9", "17"}, true},
 		{[]string{"13", "17"}, false},
 		{[]string{"12", "0", "13", "0"}, true},
-		{[]string{"22", "6"}, false},      // wraps past midnight; noon excluded
-		{[]string{"12", "GMT"}, true},     // now is already UTC
-		{[]string{"x"}, false},            // non-numeric
+		{[]string{"22", "6"}, false},  // wraps past midnight; noon excluded
+		{[]string{"12", "GMT"}, true}, // now is already UTC
+		{[]string{"x"}, false},        // non-numeric
 	}
 	for _, c := range cases {
 		if got := pacTimeRange(now, c.args); got != c.want {
@@ -137,19 +137,19 @@ func TestPacDateRange(t *testing.T) {
 		args []string
 		want bool
 	}{
-		{[]string{"3"}, true},                                   // single day == today (3)
-		{[]string{"4"}, false},                                  // single day != today
-		{[]string{"JUN"}, true},                                 // single month == current
-		{[]string{"JUL"}, false},                                // single month != current
-		{[]string{"2026"}, true},                                // single year == current
-		{[]string{"2025"}, false},                               // single year != current
-		{[]string{"1", "5"}, true},                              // day range
-		{[]string{"10", "20"}, false},                           // day range
-		{[]string{"JAN", "DEC"}, true},                          // month range
-		{[]string{"JUL", "AUG"}, false},                         // month range
-		{[]string{"NOV", "FEB"}, false},                         // wrap month range
-		{[]string{"2020", "2030"}, true},                        // year range
-		{[]string{"2000", "2020"}, false},                       // year range
+		{[]string{"3"}, true},                                     // single day == today (3)
+		{[]string{"4"}, false},                                    // single day != today
+		{[]string{"JUN"}, true},                                   // single month == current
+		{[]string{"JUL"}, false},                                  // single month != current
+		{[]string{"2026"}, true},                                  // single year == current
+		{[]string{"2025"}, false},                                 // single year != current
+		{[]string{"1", "5"}, true},                                // day range
+		{[]string{"10", "20"}, false},                             // day range
+		{[]string{"JAN", "DEC"}, true},                            // month range
+		{[]string{"JUL", "AUG"}, false},                           // month range
+		{[]string{"NOV", "FEB"}, false},                           // wrap month range
+		{[]string{"2020", "2030"}, true},                          // year range
+		{[]string{"2000", "2020"}, false},                         // year range
 		{[]string{"1", "JUN", "2026", "30", "JUN", "2026"}, true}, // full form
 		{[]string{"1", "JUL", "2026", "30", "JUL", "2026"}, false},
 		{[]string{"1", "5", "GMT"}, true},

@@ -6,6 +6,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/durck/proxykit/internal/pac"
 	"github.com/durck/proxykit/transport"
 )
 
@@ -14,10 +15,10 @@ type stubPACEngine struct {
 	err    error
 }
 
-func (s stubPACEngine) findProxy(context.Context, string, string) (string, error) {
+func (s stubPACEngine) FindProxy(context.Context, string, string) (string, error) {
 	return s.result, s.err
 }
-func (s stubPACEngine) close() {}
+func (s stubPACEngine) Close() {}
 
 type sentinelDialer struct{}
 
@@ -81,7 +82,7 @@ func TestNewDialer_NoPACSource(t *testing.T) {
 // a configured PAC source is ignored with a warning and routing falls back
 // to the static dialer (here Direct) rather than creating a pacDialer.
 func TestNewDialer_PACDegradesWithoutTag(t *testing.T) {
-	if pacSupported {
+	if pac.Supported {
 		t.Skip("built with proxykit_pac; this is the default-build degradation path")
 	}
 	var warned bool
