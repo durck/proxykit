@@ -37,24 +37,41 @@ type Dialer interface {
 // model in reverse_ssh. With no usable proxy the Dialer falls back
 // to a direct net.Dialer with cfg.Timeout.
 func NewDialer(cfg Config) Dialer {
-	entries := resolveEntries(cfg)
-	if len(entries) == 0 {
-		return &transport.Direct{Timeout: cfg.Timeout}
-	}
+	entries, pacURLs := resolveEntries(cfg)
+	static := staticDialer(entries, cfg)
 
+	// PAC takes over per-destination routing when a source is configured
+	// and the build supports it. An explicit Manual proxy always wins, so
+	// PAC is skipped when Manual is set. Without -tags proxykit_pac a
+	// configured PAC source is logged and ignored (degrade to static).
+	if cfg.Manual == "" && hasPACSource(cfg, pacURLs) {
+		if !pacSupported {
+			logf(cfg.OnLog, "warn", "proxykit: a PAC source is configured but this build lacks PAC support; rebuild with -tags proxykit_pac")
+			return static
+		}
+		return newPACDialer(cfg, pacURLs, static)
+	}
+	return static
+}
+
+// staticDialer builds the destination-independent dialer from resolved
+// proxy entries: a single dialer, an ordered fallback chain, or Direct
+// when none resolve.
+func staticDialer(entries []proxyEntry, cfg Config) Dialer {
 	dialers := make([]Dialer, 0, len(entries))
 	for _, e := range entries {
 		if d := dialerForEntry(e, cfg); d != nil {
 			dialers = append(dialers, d)
 		}
 	}
-	if len(dialers) == 0 {
+	switch len(dialers) {
+	case 0:
 		return &transport.Direct{Timeout: cfg.Timeout}
-	}
-	if len(dialers) == 1 {
+	case 1:
 		return dialers[0]
+	default:
+		return &fallbackDialer{dialers: dialers, log: cfg.OnLog}
 	}
-	return &fallbackDialer{dialers: dialers, log: cfg.OnLog}
 }
 
 // proxyEntry is a parsed proxy candidate ready for transport
@@ -65,12 +82,12 @@ type proxyEntry struct {
 	pass string
 }
 
-// resolveEntries collects proxy candidates from cfg.Manual and from
-// every registered detector when cfg.AutoDetect is true. Invalid
-// URLs are logged via cfg.OnLog and skipped.
-func resolveEntries(cfg Config) []proxyEntry {
-	var out []proxyEntry
-
+// resolveEntries collects proxy candidates from cfg.Manual and from every
+// registered detector when cfg.AutoDetect is true. Invalid URLs are logged
+// via cfg.OnLog and skipped. Detected PAC-URL candidates (URL empty,
+// PACURL set) are not proxies: they are returned separately as pacURLs for
+// the PAC path.
+func resolveEntries(cfg Config) (entries []proxyEntry, pacURLs []string) {
 	add := func(rawURL, user, pass string) {
 		u, err := ParseProxyURL(rawURL)
 		if err != nil {
@@ -86,7 +103,7 @@ func resolveEntries(cfg Config) []proxyEntry {
 			}
 			u.User = nil
 		}
-		out = append(out, proxyEntry{url: u, user: user, pass: pass})
+		entries = append(entries, proxyEntry{url: u, user: user, pass: pass})
 	}
 
 	if cfg.Manual != "" {
@@ -99,11 +116,15 @@ func resolveEntries(cfg Config) []proxyEntry {
 			logf(cfg.OnLog, "warn", "proxykit: detect: %v", err)
 		}
 		for _, c := range cs {
+			if c.PACURL != "" {
+				pacURLs = append(pacURLs, c.PACURL)
+				continue
+			}
 			add(c.URL, c.User, c.Pass)
 		}
 	}
 
-	return out
+	return entries, pacURLs
 }
 
 // dialerForEntry constructs the transport-level dialer for a single
