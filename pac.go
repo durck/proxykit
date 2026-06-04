@@ -203,12 +203,6 @@ func (p *pacDialer) pacScript(ctx context.Context) (script, source string) {
 	return p.wpadScript(ctx)
 }
 
-// wpadScript performs active DNS-WPAD discovery when Config.WPAD is set.
-// Implemented in wpad.go; a no-op placeholder until then.
-func (p *pacDialer) wpadScript(_ context.Context) (script, source string) {
-	return "", ""
-}
-
 // fetchPAC downloads a PAC script directly — never through a proxy, to
 // avoid recursing into proxy selection. Bounded by time and size; returns
 // "" on any failure (logged via log).
