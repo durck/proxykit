@@ -90,7 +90,12 @@ Acceptance:
   per-machine `HKLM` Internet Settings hive and the current user's IE
   proxy via `WinHttpGetIEProxyConfigForCurrentUser`, complementing the
   HKCU `WinINETDetector`; results are de-duplicated and tagged `winhttp`.
-- macOS detection (`SCDynamicStore` / `scutil --proxy`).
+- macOS detection (`SCDynamicStore` / `scutil --proxy`) — **done** (#13).
+  `MacOSDetector` shells out to `scutil --proxy` (no cgo, keeping the
+  static-binary goal) and parses the HTTP/HTTPS/SOCKS entries, tagged
+  `macos`. PAC/WPAD (`ProxyAutoConfigEnable`) is left out, as for the
+  other detectors. CI now runs the suite on `macos-latest` so the live
+  `scutil` path is exercised.
 - PAC / WPAD evaluation (probably gated behind a JS engine
   dependency — opt-in build tag).
 
