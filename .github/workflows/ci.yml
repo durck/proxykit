@@ -24,6 +24,23 @@ jobs:
       - run: go test -race ./...
       - run: go build ./...
 
+  pac:
+    name: pac (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: true
+      - run: go vet -tags proxykit_pac ./...
+      - run: go test -tags proxykit_pac -race ./...
+      - run: go build -tags proxykit_pac ./...
+
   cross-build:
     name: cross-build
     runs-on: ubuntu-latest
@@ -39,6 +56,17 @@ jobs:
         run: GOOS=windows GOARCH=amd64 go build ./...
       - name: darwin/amd64
         run: GOOS=darwin GOARCH=amd64 go build ./...
+      - name: linux/amd64 (pac)
+        run: GOOS=linux GOARCH=amd64 go build -tags proxykit_pac ./...
+      - name: windows/amd64 (pac)
+        run: GOOS=windows GOARCH=amd64 go build -tags proxykit_pac ./...
+      - name: darwin/amd64 (pac)
+        run: GOOS=darwin GOARCH=amd64 go build -tags proxykit_pac ./...
+      - name: default build is goja-free
+        run: |
+          if go list -deps ./... | grep -q 'dop251/goja'; then
+            echo "goja leaked into the default (no-tag) build"; exit 1
+          fi
 
   kerberos-integration:
     name: kerberos integration

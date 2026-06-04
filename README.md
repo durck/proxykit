@@ -11,17 +11,18 @@ Small, dependency-light Go library for outbound connections through HTTP/HTTPS C
 | Transports        | HTTP CONNECT (TCP+TLS), SOCKS5, Direct                            |
 | Authentication    | None, Basic, NTLM, Negotiate / Kerberos (Windows SSPI, Linux/macOS via gokrb5) |
 | Auto-detection    | `*_PROXY` env vars (any platform), Windows WinINET (HKCU) + WinHTTP (HKLM + IE), Linux `/etc/environment` + GNOME + KDE, macOS `scutil` |
+| PAC / WPAD        | `FindProxyForURL` evaluation (goja) + DNS-WPAD discovery — opt-in `-tags proxykit_pac` |
 | API               | `Dialer` (`net.Dial`-compatible), `http.RoundTripper` adapter     |
 | Platforms         | Windows, Linux, macOS — no cgo, fully static                      |
 
 ### Out of scope (v0.1)
 
-PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception / MITM, connection pooling, retry / circuit breaker, BSD detection.
+SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception / MITM, connection pooling, retry / circuit breaker, BSD detection. (PAC / WPAD landed later as an opt-in build — see below.)
 
 ### Roadmap
 
 - **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches, Linux `KEYRING:` caches, and a Dockerised KDC integration test are in place.
-- **v0.3+** — community-driven; SOCKS5 user/pass typed option (`transport.SOCKS5.Auth`), Windows WinHTTP detection (HKLM + IE), and macOS detection (`scutil --proxy`) landed. Pending: PAC / WPAD (#14).
+- **v0.3+** — community-driven; SOCKS5 user/pass typed option (`transport.SOCKS5.Auth`), Windows WinHTTP detection (HKLM + IE), macOS detection (`scutil --proxy`), and PAC/WPAD evaluation (opt-in `-tags proxykit_pac`) have all landed.
 
 ## Install
 
@@ -123,6 +124,34 @@ conn, err := d.DialContext(ctx, "tcp", "example.com:443")
 
 `Auth` takes precedence over any userinfo in `ProxyURL`; leave it nil to fall back to `ProxyURL.User`.
 
+### PAC / WPAD (opt-in)
+
+Proxy Auto-Config evaluates a JavaScript `FindProxyForURL(url, host)` to pick a proxy **per destination**. It needs a JS engine, so it is gated behind a build tag to keep the default build dependency-light and `cgo`-free:
+
+```sh
+go build -tags proxykit_pac ./...
+```
+
+With the tag, supply the PAC via `Config`:
+
+```go
+// 1) an explicit PAC URL (fetched directly, never through a proxy):
+d := proxykit.NewDialer(proxykit.Config{PACURL: "http://wpad.corp/proxy.pac"})
+
+// 2) the OS-configured PAC URL (Windows AutoConfigURL, macOS / GNOME auto mode):
+d = proxykit.NewDialer(proxykit.Config{AutoDetect: true})
+
+// 3) active DNS-WPAD discovery (probes http://wpad.<domain>/wpad.dat):
+d = proxykit.NewDialer(proxykit.Config{WPAD: true})
+
+// 4) an inline script (handy for tests):
+d = proxykit.NewDialer(proxykit.Config{PAC: `function FindProxyForURL(u,h){ return "DIRECT"; }`})
+```
+
+The PAC result (`"PROXY host:port; SOCKS host:port; DIRECT"`) becomes a per-destination fallback chain. `Config.Manual` always wins; if a PAC source is set but the binary was built **without** `-tags proxykit_pac`, it is logged and ignored (routing degrades to static/DIRECT).
+
+**Security:** `WPAD` is a separate opt-in from `AutoDetect` because a rogue `wpad` host on the network can serve an attacker-controlled PAC — enable it only on trusted networks. Evaluation is time-bounded (a watchdog interrupts a runaway script) and `shExpMatch` uses RE2 (no ReDoS). DHCP-based WPAD (option 252) is out of scope.
+
 ### As an `http.RoundTripper`
 
 ```go
@@ -176,7 +205,7 @@ proxytest dial --proxy http://proxy:8080 example.com:443  # explicit
 
 ## Architecture
 
-- `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`).
+- `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`) and the opt-in PAC/WPAD engine (`pac*.go`, `wpad.go`; goja behind `-tags proxykit_pac`, a stub otherwise).
 - `proxykit/transport` — concrete dialers: `Direct`, `Connect` (HTTP CONNECT), `SOCKS5`. Each implements the `Dialer` shape directly and is composable.
 - `proxykit/auth` — `Authenticator` interface plus `Basic`, `None`, `NTLM`, `Negotiate` (Windows SSPI; Linux/macOS via `jcmturner/gokrb5`, opt out with `-tags proxykit_nokerberos`).
 - `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (HKCU) + `WinHTTPDetector` (HKLM + IE) (Windows-only), the Linux-only `EtcEnvironmentDetector`, `GNOMEDetector`, `KDEDetector`, and the macOS-only `MacOSDetector` (`scutil --proxy`).
