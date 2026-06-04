@@ -22,6 +22,13 @@ func TestMacOSDetector_DarwinSmoke(t *testing.T) {
 		if c.From != "macos" {
 			t.Errorf("From = %q, want macos", c.From)
 		}
+		// A PAC candidate carries PACURL and no URL; validate it separately.
+		if c.PACURL != "" {
+			if _, perr := url.Parse(c.PACURL); perr != nil {
+				t.Errorf("candidate PACURL %q does not parse: %v", c.PACURL, perr)
+			}
+			continue
+		}
 		u, perr := url.Parse(c.URL)
 		if perr != nil {
 			t.Errorf("candidate URL %q does not parse: %v", c.URL, perr)

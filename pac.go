@@ -126,6 +126,9 @@ func (p *pacDialer) dialerForHost(ctx context.Context, scheme, host string) Dial
 	}
 	p.mu.Unlock()
 
+	// Evaluate outside the lock (PAC eval may do DNS). Two goroutines hitting
+	// the same cold key may both evaluate; the duplicate is benign as the
+	// results are equivalent.
 	d := pacChain(ctx, p.engine, scheme, host, p.cfg, p.fallback)
 
 	p.mu.Lock()

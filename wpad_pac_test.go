@@ -8,14 +8,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
-// TestWPADDiscoveryE2E drives the full WPAD path: discovery (via the
-// wpadCandidateURLs seam) → fetch the wpad.dat → compile → route a dial.
+// TestWPADDiscoveryE2E drives the full WPAD path end to end: discovery (via
+// the wpadCandidateURLs seam) → fetch the wpad.dat → compile → route the
+// dial through the PROXY the script selects (a mock CONNECT proxy), proving
+// both WPAD discovery and PROXY routing together.
 func TestWPADDiscoveryE2E(t *testing.T) {
+	var hits int32
+	proxyAddr := startConnectProxy(t, &hits)
+
 	pac := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, `function FindProxyForURL(url, host){ return "DIRECT"; }`)
+		io.WriteString(w, `function FindProxyForURL(url, host){ return "PROXY `+proxyAddr+`"; }`)
 	}))
 	defer pac.Close()
 
@@ -46,5 +52,8 @@ func TestWPADDiscoveryE2E(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "wpad-ok") {
 		t.Errorf("response %q does not contain wpad-ok", body)
+	}
+	if atomic.LoadInt32(&hits) == 0 {
+		t.Error("WPAD-discovered PAC did not route through the proxy")
 	}
 }

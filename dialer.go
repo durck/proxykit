@@ -36,6 +36,12 @@ type Dialer interface {
 // order and return the first success — preserving the precedence
 // model in reverse_ssh. With no usable proxy the Dialer falls back
 // to a direct net.Dialer with cfg.Timeout.
+//
+// PAC: when cfg.Manual is empty and a PAC source is configured
+// (cfg.PAC/PACURL, a detected OS PAC URL, or cfg.WPAD) the returned
+// Dialer chooses a proxy per destination by evaluating the PAC script.
+// This requires building with -tags proxykit_pac; otherwise the PAC
+// source is logged and ignored and routing degrades to the static chain.
 func NewDialer(cfg Config) Dialer {
 	entries, pacURLs := resolveEntries(cfg)
 	static := staticDialer(entries, cfg)

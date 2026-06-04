@@ -27,6 +27,15 @@ func TestDomainWalk(t *testing.T) {
 	}
 }
 
+func TestParseResolvSearch(t *testing.T) {
+	in := "# comment\nnameserver 1.1.1.1\nsearch corp.example.com sub.example.com\ndomain legacy.example.com extra.ignored\noptions ndots:2\n"
+	got := parseResolvSearch(in)
+	want := []string{"corp.example.com", "sub.example.com", "legacy.example.com"}
+	if !slices.Equal(got, want) {
+		t.Errorf("parseResolvSearch = %v, want %v", got, want)
+	}
+}
+
 func TestWpadDomains(t *testing.T) {
 	cases := []struct {
 		name     string

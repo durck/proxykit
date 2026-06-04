@@ -115,11 +115,24 @@ func systemSearchDomains() []string {
 	if err != nil {
 		return nil
 	}
+	return parseResolvSearch(string(data))
+}
+
+// parseResolvSearch extracts domain suffixes from resolv.conf content: all
+// arguments of a "search" line and the single argument of a "domain" line,
+// per resolv.conf(5).
+func parseResolvSearch(content string) []string {
 	var out []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "search ") || strings.HasPrefix(line, "domain ") {
-			out = append(out, strings.Fields(line)[1:]...)
+	for _, line := range strings.Split(content, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		switch fields[0] {
+		case "search":
+			out = append(out, fields[1:]...)
+		case "domain":
+			out = append(out, fields[1]) // domain takes a single argument
 		}
 	}
 	return out
