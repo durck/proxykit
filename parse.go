@@ -25,11 +25,16 @@ func ParseProxyURL(s string) (*url.URL, error) {
 	}
 
 	u, err := url.Parse(s)
+	// A string that already carries a scheme ("http://…") but fails to
+	// parse is malformed — reject it instead of retrying as a bare host,
+	// which would fold the scheme token into the hostname.
+	if err != nil && schemeAuthority.MatchString(s) {
+		return nil, fmt.Errorf("proxykit: invalid proxy URL %q: %w", redactProxyURL(s), err)
+	}
 	// "host:port" parses with Scheme set to the host and Opaque to the
-	// port; "host" parses with no scheme. Both should be retried as
-	// http://host[:port].
-	retryAsBare := err != nil || u.Scheme == "" || u.Opaque != ""
-	if retryAsBare {
+	// port; "host" parses with no scheme. Both — and any scheme-less parse
+	// failure — are retried as http://host[:port].
+	if err != nil || u.Scheme == "" || u.Opaque != "" {
 		u, err = url.Parse("http://" + s)
 		if err != nil {
 			return nil, fmt.Errorf("proxykit: invalid proxy URL %q: %w", redactProxyURL(s), err)
@@ -42,7 +47,10 @@ func ParseProxyURL(s string) (*url.URL, error) {
 	}
 	u.Scheme = scheme
 
-	if u.Host == "" {
+	// Reject an empty hostname (e.g. "http://:8080", which Go's dialer would
+	// otherwise treat as localhost). u.Host can be non-empty while the
+	// hostname is empty when only a port is present.
+	if u.Hostname() == "" {
 		return nil, fmt.Errorf("proxykit: proxy URL %q has no host", redactProxyURL(s))
 	}
 

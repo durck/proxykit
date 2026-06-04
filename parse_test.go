@@ -66,6 +66,17 @@ func TestParseProxyURL_Invalid(t *testing.T) {
 		{"gopher rejected", "gopher://x", "unsupported proxy scheme"},
 		{"scheme only", "http://", "no host"},
 		{"control char", "http://proxy\x00", "invalid"},
+		// FINDING-1(a): empty hostname must be rejected, not silently
+		// accepted (an empty-host proxy is dialed as localhost).
+		{"empty host with port", "http://:8080", "no host"},
+		{"socks5 empty host", "socks5://:1080", "no host"},
+		{"port only", ":1080", "no host"},
+		{"empty host with userinfo", "http://user@:80", "no host"},
+		// FINDING-1(b): a malformed URL that already carries a scheme must
+		// be rejected, not retried as a bare host (which mangles the scheme
+		// into the hostname).
+		{"scheme with stray space", "http:// ", "invalid"},
+		{"unterminated ipv6", "http://[::1", "invalid"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
