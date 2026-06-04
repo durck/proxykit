@@ -17,8 +17,8 @@ const winINETInternetSettingsKey = `Software\Microsoft\Windows\CurrentVersion\In
 // Only the ProxyEnable + ProxyServer values are honoured.
 //
 // AutoConfigURL (PAC) and AutoDetect (WPAD) are intentionally out of
-// scope for v0.1; per-machine HKLM overrides and Group Policy paths
-// are likewise not consulted.
+// scope here (see #14); the per-machine HKLM hive is consulted by
+// WinHTTPDetector instead, and Group Policy paths are not read.
 type WinINETDetector struct{}
 
 func init() {
@@ -31,37 +31,50 @@ func init() {
 // not as an error — a fresh user profile may legitimately lack the
 // values.
 func (WinINETDetector) Detect() ([]Candidate, error) {
-	k, err := registry.OpenKey(registry.CURRENT_USER, winINETInternetSettingsKey, registry.QUERY_VALUE)
+	parsed, err := readInternetSettingsProxy(registry.CURRENT_USER, "wininet")
+	if err != nil {
+		return nil, err
+	}
+	if parsed == "" {
+		return nil, nil
+	}
+	return []Candidate{{URL: parsed, From: "wininet"}}, nil
+}
+
+// readInternetSettingsProxy reads ProxyEnable + ProxyServer from the
+// "Internet Settings" key under root and returns the parsed proxy URL
+// (see parseWinINETProxyString). It returns "" with a nil error when the
+// key or values are absent, or when ProxyEnable != 1 — a missing or
+// disabled configuration is "nothing here", not a failure. label
+// prefixes any genuine error. Shared by the HKCU WinINETDetector and the
+// HKLM branch of WinHTTPDetector.
+func readInternetSettingsProxy(root registry.Key, label string) (string, error) {
+	k, err := registry.OpenKey(root, winINETInternetSettingsKey, registry.QUERY_VALUE)
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
-			return nil, nil
+			return "", nil
 		}
-		return nil, fmt.Errorf("wininet: open HKCU\\%s: %w", winINETInternetSettingsKey, err)
+		return "", fmt.Errorf("%s: open Internet Settings: %w", label, err)
 	}
 	defer k.Close()
 
 	enable, _, err := k.GetIntegerValue("ProxyEnable")
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
-			return nil, nil
+			return "", nil
 		}
-		return nil, fmt.Errorf("wininet: read ProxyEnable: %w", err)
+		return "", fmt.Errorf("%s: read ProxyEnable: %w", label, err)
 	}
 	if enable != 1 {
-		return nil, nil
+		return "", nil
 	}
 
 	server, _, err := k.GetStringValue("ProxyServer")
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
-			return nil, nil
+			return "", nil
 		}
-		return nil, fmt.Errorf("wininet: read ProxyServer: %w", err)
+		return "", fmt.Errorf("%s: read ProxyServer: %w", label, err)
 	}
-
-	parsed := parseWinINETProxyString(server)
-	if parsed == "" {
-		return nil, nil
-	}
-	return []Candidate{{URL: parsed, From: "wininet"}}, nil
+	return parseWinINETProxyString(server), nil
 }

@@ -86,7 +86,10 @@ Acceptance:
   field, which takes precedence over `ProxyURL.User`; the manual/detected
   path sets it instead of re-embedding credentials in the URL.
 - WinHTTP detection (`HKLM` per-machine path + `WinHttpGetIEProxy
-  ConfigForCurrentUser`).
+  ConfigForCurrentUser`) — **done** (#12). `WinHTTPDetector` reads the
+  per-machine `HKLM` Internet Settings hive and the current user's IE
+  proxy via `WinHttpGetIEProxyConfigForCurrentUser`, complementing the
+  HKCU `WinINETDetector`; results are de-duplicated and tagged `winhttp`.
 - macOS detection (`SCDynamicStore` / `scutil --proxy`).
 - PAC / WPAD evaluation (probably gated behind a JS engine
   dependency — opt-in build tag).
