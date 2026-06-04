@@ -1,0 +1,12 @@
+# Enforce LF line endings for all text files, regardless of contributor OS.
+# All committed blobs are already LF; this prevents a CRLF leak from machines
+# with core.autocrlf=true (typically Windows).
+* text=auto eol=lf
+
+# Be explicit for the primary source and metadata types.
+*.go   text eol=lf
+*.mod  text eol=lf
+*.sum  text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
