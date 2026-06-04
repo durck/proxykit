@@ -96,7 +96,9 @@ func TestCompilePAC_SyntaxError(t *testing.T) {
 }
 
 func TestGojaPACEngine_Timeout(t *testing.T) {
-	eng, err := compilePAC(`function FindProxyForURL(url, host){ while(true){} }`, systemPACResolver{})
+	// Loops only for host "slow" so a later eval can prove the runtime
+	// recovered and the interrupt did not leak into the next call.
+	eng, err := compilePAC(`function FindProxyForURL(url, host){ if (host == "slow") { while(true){} } return "DIRECT"; }`, systemPACResolver{})
 	if err != nil {
 		t.Fatalf("compilePAC: %v", err)
 	}
@@ -105,13 +107,21 @@ func TestGojaPACEngine_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err = eng.findProxy(ctx, "https://x/", "x")
-	elapsed := time.Since(start)
-	if err == nil {
+	if _, err := eng.findProxy(ctx, "https://slow/", "slow"); err == nil {
 		t.Fatal("expected an interrupt error from the runaway PAC")
 	}
-	if elapsed > 2*time.Second {
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("eval unblocked after %v; watchdog should fire near 200ms", elapsed)
+	}
+
+	// Regression guard for the watchdog interrupt-leak: a later eval must
+	// succeed, proving ClearInterrupt ran after the watchdog goroutine exited.
+	got, err := eng.findProxy(context.Background(), "https://fast/", "fast")
+	if err != nil {
+		t.Fatalf("post-timeout eval failed (interrupt leaked?): %v", err)
+	}
+	if got != "DIRECT" {
+		t.Errorf("post-timeout eval = %q, want DIRECT", got)
 	}
 }
 
