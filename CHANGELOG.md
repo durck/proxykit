@@ -7,6 +7,8 @@ API is unstable until `v1.0`.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-04
+
 ### Changed
 
 - Internal refactor: the PAC/WPAD engine (script evaluation, fetching, and
@@ -68,6 +70,7 @@ Initial release.
   WinINET (HKCU) registry.
 - `cmd/proxytest` diagnostic CLI and runnable `examples/`.
 
-[Unreleased]: https://github.com/durck/proxykit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/durck/proxykit/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/durck/proxykit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/durck/proxykit/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/durck/proxykit/releases/tag/v0.1.0
