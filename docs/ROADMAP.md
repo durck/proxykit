@@ -96,8 +96,13 @@ Acceptance:
   `macos`. PAC/WPAD (`ProxyAutoConfigEnable`) is left out, as for the
   other detectors. CI now runs the suite on `macos-latest` so the live
   `scutil` path is exercised.
-- PAC / WPAD evaluation (probably gated behind a JS engine
-  dependency — opt-in build tag).
+- PAC / WPAD evaluation — **done** (#14). Behind opt-in `-tags proxykit_pac`
+  (pulls `github.com/dop251/goja`, pure-Go), `FindProxyForURL` is evaluated
+  per destination with the Netscape host functions; PAC URLs come from
+  `Config.PAC`/`PACURL`, the detected OS AutoConfigURL, or active DNS-WPAD
+  (`Config.WPAD`, opt-in). The default build stays goja-free and degrades a
+  configured PAC source to static routing. DHCP option 252 WPAD is out of
+  scope.
 
 ## Out-of-band
 
