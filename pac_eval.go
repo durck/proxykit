@@ -22,6 +22,7 @@ var errPACTimeout = errors.New("proxykit: PAC evaluation timed out")
 // newPACEngine to the real goja-backed evaluator, pulling in the JS
 // engine dependency. The default build uses pac_stub.go instead.
 func init() {
+	pacSupported = true
 	newPACEngine = func(script string) (pacEngine, error) {
 		return compilePAC(script, systemPACResolver{})
 	}
