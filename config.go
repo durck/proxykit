@@ -38,6 +38,17 @@ type Config struct {
 	// trusted networks. Requires -tags proxykit_pac.
 	WPAD bool
 
+	// NoProxy is a comma-separated list of destinations that must be reached
+	// directly, bypassing any proxy (Manual, AutoDetect, or PAC). It uses the
+	// standard NO_PROXY syntax: a domain suffix (with or without a leading
+	// dot, e.g. "corp.local" or ".corp.local"), an IP or CIDR (e.g.
+	// "10.0.0.0/8"), a "host:port", or "*" to bypass everything. Matching is
+	// case-insensitive. Loopback destinations (localhost, 127.0.0.0/8, ::1)
+	// are always reached directly whenever a list is set, following the usual
+	// convention. When AutoDetect is set, the environment's NO_PROXY/no_proxy
+	// is merged in. Empty disables bypass.
+	NoProxy string
+
 	// Auth is the ordered list of Authenticators tried on HTTP 407
 	// from a CONNECT proxy. The transport matches each Authenticator's
 	// Scheme against the proxy-advertised Proxy-Authenticate values.

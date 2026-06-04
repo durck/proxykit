@@ -7,6 +7,14 @@ API is unstable until `v1.0`.
 
 ## [Unreleased]
 
+### Added
+
+- `Config.NoProxy` and honouring of the `NO_PROXY`/`no_proxy` environment
+  variable (the latter under `AutoDetect`): a destination matching the list
+  dials directly, bypassing Manual, AutoDetect, and PAC proxies. Standard
+  NO_PROXY syntax — suffix, leading dot, CIDR, `host:port`, `*`. Adds the
+  `detect.EnvNoProxy` helper.
+
 ## [0.3.1] - 2026-06-04
 
 ### Changed

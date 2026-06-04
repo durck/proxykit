@@ -37,6 +37,15 @@ func (EnvDetector) Detect() ([]Candidate, error) {
 	return out, nil
 }
 
+// EnvNoProxy returns the no-proxy bypass list from the process environment
+// (NO_PROXY/no_proxy), as parsed by golang.org/x/net/http/httpproxy. It is
+// empty when unset. EnvDetector itself only surfaces proxy candidates and
+// intentionally leaves bypass matching to the caller; this exposes the raw
+// list so the dialer can honour it.
+func EnvNoProxy() string {
+	return httpproxy.FromEnvironment().NoProxy
+}
+
 // candidateFromRaw splits an inline-userinfo proxy URL into a
 // Candidate with userinfo extracted into User/Pass and stripped from
 // the URL string.

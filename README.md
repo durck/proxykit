@@ -56,7 +56,26 @@ d := proxykit.NewDialer(proxykit.Config{AutoDetect: true})
 conn, err := d.DialContext(ctx, "tcp", "example.com:443")
 ```
 
-`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lower-case spellings) are honoured everywhere. Beyond env vars, proxykit reads the Windows WinINET (per-user `HKCU`) and WinHTTP (per-machine `HKLM` + the IE config) proxy settings; on Linux, `/etc/environment` plus the GNOME (GSettings) and KDE (kioslaverc) desktop settings; and on macOS, the system configuration via `scutil`. Built with `-tags proxykit_pac`, a system-configured PAC URL is honoured too (see [PAC / WPAD](#pac--wpad-opt-in)).
+`HTTP_PROXY` and `HTTPS_PROXY` (and the lower-case spellings) are honoured on every platform; `NO_PROXY` is honoured as a bypass list (see [Bypassing proxies](#bypassing-proxies-no_proxy)). Beyond env vars, proxykit reads the Windows WinINET (per-user `HKCU`) and WinHTTP (per-machine `HKLM` + the IE config) proxy settings; on Linux, `/etc/environment` plus the GNOME (GSettings) and KDE (kioslaverc) desktop settings; and on macOS, the system configuration via `scutil`. Built with `-tags proxykit_pac`, a system-configured PAC URL is honoured too (see [PAC / WPAD](#pac--wpad-opt-in)).
+
+### Bypassing proxies (NO_PROXY)
+
+Destinations that must always be reached directly go in `Config.NoProxy`, using
+the standard `NO_PROXY` syntax — a domain suffix (`corp.local` or `.corp.local`),
+an IP or CIDR (`10.0.0.0/8`), a `host:port`, or `*` to bypass everything:
+
+```go
+d := proxykit.NewDialer(proxykit.Config{
+    Manual:  "http://proxy.corp:8080",
+    NoProxy: "localhost,127.0.0.1,.internal.corp,10.0.0.0/8",
+})
+```
+
+A matching destination dials directly, overriding `Manual`, `AutoDetect`, and
+PAC. With `AutoDetect` enabled the environment's `NO_PROXY`/`no_proxy` is merged
+in. Only the environment variable and `Config.NoProxy` currently feed the bypass
+list; the OS exception lists (WinINET/WinHTTP, GNOME/KDE, `scutil`) are not yet
+wired in.
 
 ### Authenticated proxy
 

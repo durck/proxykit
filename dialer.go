@@ -43,6 +43,10 @@ type Dialer interface {
 // Dialer chooses a proxy per destination by evaluating the PAC script.
 // This requires building with -tags proxykit_pac; otherwise the PAC
 // source is logged and ignored and routing degrades to the static chain.
+//
+// NO_PROXY: when cfg.NoProxy is set (or, under AutoDetect, the environment's
+// NO_PROXY/no_proxy) a destination matching the list dials directly,
+// overriding any Manual, detected, or PAC-selected proxy.
 func NewDialer(cfg Config) Dialer {
 	entries, pacURLs := resolveEntries(cfg)
 	static := staticDialer(entries, cfg)
@@ -51,14 +55,22 @@ func NewDialer(cfg Config) Dialer {
 	// and the build supports it. An explicit Manual proxy always wins, so
 	// PAC is skipped when Manual is set. Without -tags proxykit_pac a
 	// configured PAC source is logged and ignored (degrade to static).
+	base := static
 	if cfg.Manual == "" && hasPACSource(cfg, pacURLs) {
-		if !pac.Supported {
+		if pac.Supported {
+			base = newPACDialer(cfg, pacURLs, static)
+		} else {
 			logf(cfg.OnLog, "warn", "proxykit: a PAC source is configured but this build lacks PAC support; rebuild with -tags proxykit_pac")
-			return static
 		}
-		return newPACDialer(cfg, pacURLs, static)
 	}
-	return static
+
+	// NO_PROXY bypass wraps the resolved dialer so destinations matching the
+	// no-proxy list dial directly, overriding Manual, AutoDetect, and PAC.
+	// With no list configured the base dialer is returned unchanged.
+	if m := newNoProxyMatcher(resolveNoProxy(cfg)); m != nil {
+		return &bypassDialer{matcher: m, proxied: base, direct: &transport.Direct{Timeout: cfg.Timeout}}
+	}
+	return base
 }
 
 // staticDialer builds the destination-independent dialer from resolved

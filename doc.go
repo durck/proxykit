@@ -8,6 +8,9 @@
 //     platform; the Windows WinINET (HKCU) and WinHTTP (HKLM + IE) registries;
 //     the Linux /etc/environment file and the GNOME and KDE desktop settings;
 //     and the macOS system configuration via scutil.
+//   - NO_PROXY bypass: destinations in Config.NoProxy (and, under AutoDetect,
+//     the NO_PROXY environment variable) are dialled directly, overriding any
+//     Manual, detected, or PAC-selected proxy.
 //   - Optional PAC/WPAD: per-destination proxy selection by evaluating a
 //     FindProxyForURL script, with DNS-based WPAD discovery. This needs a JS
 //     engine and is gated behind the proxykit_pac build tag (see below).
