@@ -10,18 +10,18 @@ Small, dependency-light Go library for outbound connections through HTTP/HTTPS C
 |-------------------|-------------------------------------------------------------------|
 | Transports        | HTTP CONNECT (TCP+TLS), SOCKS5, Direct                            |
 | Authentication    | None, Basic, NTLM, Negotiate / Kerberos (Windows SSPI, Linux/macOS via gokrb5) |
-| Auto-detection    | `*_PROXY` env vars (any platform), Windows WinINET (HKCU) + WinHTTP (HKLM + IE), Linux `/etc/environment` + GNOME + KDE |
+| Auto-detection    | `*_PROXY` env vars (any platform), Windows WinINET (HKCU) + WinHTTP (HKLM + IE), Linux `/etc/environment` + GNOME + KDE, macOS `scutil` |
 | API               | `Dialer` (`net.Dial`-compatible), `http.RoundTripper` adapter     |
 | Platforms         | Windows, Linux, macOS — no cgo, fully static                      |
 
 ### Out of scope (v0.1)
 
-PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception / MITM, connection pooling, retry / circuit breaker, macOS / BSD detection.
+PAC / WPAD, SOCKS4 / SOCKS4a, Digest auth, server-side SOCKS, TLS interception / MITM, connection pooling, retry / circuit breaker, BSD detection.
 
 ### Roadmap
 
 - **v0.2** — Linux detection done (`/etc/environment`, GNOME GSettings, KDE kioslaverc); Linux/macOS Kerberos via `jcmturner/gokrb5` — FILE/DIR caches, Linux `KEYRING:` caches, and a Dockerised KDC integration test are in place.
-- **v0.3+** — community-driven; SOCKS5 user/pass typed option (`transport.SOCKS5.Auth`) and Windows WinHTTP detection (HKLM + IE) landed. Pending: macOS detection (on request).
+- **v0.3+** — community-driven; SOCKS5 user/pass typed option (`transport.SOCKS5.Auth`), Windows WinHTTP detection (HKLM + IE), and macOS detection (`scutil --proxy`) landed. Pending: PAC / WPAD (#14).
 
 ## Install
 
@@ -167,7 +167,7 @@ proxytest detect
 # http://proxy.corp:8080                    env
 # socks5://socks.corp:1080                  wininet
 # http://machine-proxy.corp:8080            winhttp
-# (on Linux, linux/etc-environment, linux/gnome and linux/kde rows appear too)
+# (on Linux, linux/etc-environment, linux/gnome and linux/kde rows appear too; on macOS, a macos row)
 
 proxytest dial example.com:443                            # direct
 proxytest dial --auto example.com:443                     # detect.All
@@ -179,7 +179,7 @@ proxytest dial --proxy http://proxy:8080 example.com:443  # explicit
 - `proxykit` (root) — public API (`Config`, `Dialer`, `NewDialer`, `NewHTTPTransport`, `ParseProxyURL`).
 - `proxykit/transport` — concrete dialers: `Direct`, `Connect` (HTTP CONNECT), `SOCKS5`. Each implements the `Dialer` shape directly and is composable.
 - `proxykit/auth` — `Authenticator` interface plus `Basic`, `None`, `NTLM`, `Negotiate` (Windows SSPI; Linux/macOS via `jcmturner/gokrb5`, opt out with `-tags proxykit_nokerberos`).
-- `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (HKCU) + `WinHTTPDetector` (HKLM + IE) (Windows-only), and the Linux-only `EtcEnvironmentDetector`, `GNOMEDetector`, `KDEDetector`.
+- `proxykit/detect` — `Detector` framework, `EnvDetector` (always), `WinINETDetector` (HKCU) + `WinHTTPDetector` (HKLM + IE) (Windows-only), the Linux-only `EtcEnvironmentDetector`, `GNOMEDetector`, `KDEDetector`, and the macOS-only `MacOSDetector` (`scutil --proxy`).
 
 ## License
 
