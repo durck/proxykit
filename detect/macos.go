@@ -27,10 +27,11 @@ import (
 // A per-protocol entry is emitted only when its <P>Enable flag is "1" and
 // a host is present. http and https map to an http:// URL (reached via
 // CONNECT), socks to socks5://, de-duplicated by URL — matching
-// gnomeCandidates and parseWinINETProxyString. PAC/WPAD
-// (ProxyAutoConfigEnable) is out of scope: Candidate has no PAC field.
-// macOS keeps proxy credentials in the Keychain rather than the proxy
-// configuration, so candidates never carry User/Pass.
+// gnomeCandidates and parseWinINETProxyString. When ProxyAutoConfigEnable
+// is "1" the ProxyAutoConfigURLString is surfaced as a PACURL candidate
+// (used only in -tags proxykit_pac builds). macOS keeps proxy credentials
+// in the Keychain rather than the proxy configuration, so candidates
+// never carry User/Pass.
 //
 // Kept platform-agnostic so it is tested on every CI matrix entry without
 // a real macOS host.
@@ -59,6 +60,13 @@ func parseSCUtilProxy(raw string) []Candidate {
 	add("http", "HTTPEnable", "HTTPProxy", "HTTPPort")
 	add("http", "HTTPSEnable", "HTTPSProxy", "HTTPSPort")
 	add("socks5", "SOCKSEnable", "SOCKSProxy", "SOCKSPort")
+
+	if kv["ProxyAutoConfigEnable"] == "1" {
+		if pac := strings.TrimSpace(kv["ProxyAutoConfigURLString"]); pac != "" {
+			out = append(out, Candidate{PACURL: pac, From: "macos"})
+		}
+	}
+
 	return out
 }
 

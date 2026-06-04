@@ -3,6 +3,7 @@
 package detect
 
 import (
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -10,29 +11,33 @@ import (
 )
 
 // WinHTTPDetector reads the per-machine WinHTTP proxy configuration on
-// Windows from two sources that complement the per-user HKCU
-// WinINETDetector:
+// Windows from sources that complement the per-user HKCU WinINETDetector:
 //
 //  1. The HKLM "Internet Settings" hive (ProxyEnable + ProxyServer) —
 //     the per-machine manual proxy.
 //  2. WinHttpGetIEProxyConfigForCurrentUser — the WinHTTP view of the
-//     current user's IE proxy (its lpszProxy field).
+//     current user's IE proxy (lpszProxy).
+//  3. AutoConfigURL (PAC): the HKLM AutoConfigURL value and the IE
+//     config's lpszAutoConfigURL, surfaced as PACURL candidates (used
+//     only in -tags proxykit_pac builds).
 //
-// AutoConfigURL (PAC) and AutoDetect (WPAD) are out of scope (see #14).
+// AutoDetect (WPAD discovery) is left to Config.WPAD.
 type WinHTTPDetector struct{}
 
 func init() {
 	Default = append(Default, WinHTTPDetector{})
 }
 
-// Detect returns at most one candidate per source — the HKLM hive and
-// the WinHTTP IE config — de-duplicated by URL and tagged "winhttp". A
-// missing key, disabled proxy, or absent IE config is "nothing
-// configured", not an error. The two sources are independent; see
-// mergeWinHTTPSources for how a genuine HKLM read error is handled.
+// Detect returns proxy and PAC candidates from the HKLM hive and the
+// WinHTTP IE config, de-duplicated and tagged "winhttp". A missing key,
+// disabled proxy, or absent IE config is "nothing configured", not an
+// error. The sources are independent; see mergeWinHTTPSources for how a
+// genuine HKLM read error is handled.
 func (WinHTTPDetector) Detect() ([]Candidate, error) {
 	hklm, hklmErr := readInternetSettingsProxy(registry.LOCAL_MACHINE, "winhttp/hklm")
-	return mergeWinHTTPSources(hklm, hklmErr, winHTTPIEProxy())
+	ieProxy, iePAC := winHTTPIEProxy()
+	hklmPAC := readInternetSettingsAutoConfigURL(registry.LOCAL_MACHINE)
+	return mergeWinHTTPSources(hklm, hklmErr, ieProxy, hklmPAC, iePAC)
 }
 
 var (
@@ -54,22 +59,26 @@ type winHTTPCurrentUserIEProxyConfig struct {
 	lpszProxyBypass   *uint16
 }
 
-// winHTTPIEProxy returns the parsed proxy URL from the lpszProxy field of
-// WinHttpGetIEProxyConfigForCurrentUser. A FALSE return — typically
-// ERROR_FILE_NOT_FOUND when no per-user IE config exists — yields "".
-// The API allocates the LPWSTR fields, which the caller frees with
-// GlobalFree.
-func winHTTPIEProxy() string {
+// winHTTPIEProxy returns the manual proxy (lpszProxy) and the PAC URL
+// (lpszAutoConfigURL) from WinHttpGetIEProxyConfigForCurrentUser. A FALSE
+// return — typically ERROR_FILE_NOT_FOUND when no per-user IE config
+// exists — yields "", "". The API allocates the LPWSTR fields, which the
+// caller frees with GlobalFree.
+func winHTTPIEProxy() (proxy, pacURL string) {
 	var cfg winHTTPCurrentUserIEProxyConfig
 	r1, _, _ := procWinHTTPGetIEProxyConfig.Call(uintptr(unsafe.Pointer(&cfg)))
 	if r1 == 0 {
-		return ""
+		return "", ""
 	}
 	defer globalFree(unsafe.Pointer(cfg.lpszAutoConfigURL))
 	defer globalFree(unsafe.Pointer(cfg.lpszProxy))
 	defer globalFree(unsafe.Pointer(cfg.lpszProxyBypass))
 
-	return proxyURLFromUTF16(cfg.lpszProxy)
+	proxy = proxyURLFromUTF16(cfg.lpszProxy)
+	if cfg.lpszAutoConfigURL != nil {
+		pacURL = strings.TrimSpace(windows.UTF16PtrToString(cfg.lpszAutoConfigURL))
+	}
+	return proxy, pacURL
 }
 
 // proxyURLFromUTF16 decodes a proxy LPWSTR and parses it. The IE proxy

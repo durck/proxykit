@@ -12,8 +12,9 @@ const gnomeProxySchema = "org.gnome.system.proxy"
 
 // GNOMEDetector reads the manual proxy configuration from the GNOME
 // desktop's org.gnome.system.proxy GSettings schema by shelling out to
-// gsettings (no D-Bus dependency). Only "manual" mode is honoured;
-// "auto" (PAC/WPAD) is out of scope as Candidate has no PAC field.
+// gsettings (no D-Bus dependency). "manual" mode yields proxy
+// candidates; "auto" mode surfaces autoconfig-url as a PACURL candidate
+// (used only in -tags proxykit_pac builds).
 //
 // Stored credentials (org.gnome.system.proxy.http use-authentication /
 // authentication-user / authentication-password) are read into the
@@ -49,25 +50,29 @@ func (GNOMEDetector) Detect() ([]Candidate, error) {
 		return unquoteGSettings(string(out))
 	}
 
-	// Short-circuit on the common case (proxy off) before issuing the
-	// remaining nine reads. A failed mode read yields "" and is treated
-	// as "not manual" → no candidates, no error, by design.
-	mode := get(gnomeProxySchema, "mode")
-	if mode != "manual" {
+	// Read mode first and branch: "manual" issues the nine proxy reads,
+	// "auto" reads the single PAC URL, anything else (incl. a failed read
+	// yielding "") means no candidates, no error.
+	switch get(gnomeProxySchema, "mode") {
+	case "auto":
+		return gnomeCandidates(gnomeProxy{
+			Mode:          "auto",
+			AutoconfigURL: get(gnomeProxySchema, "autoconfig-url"),
+		}), nil
+	case "manual":
+		return gnomeCandidates(gnomeProxy{
+			Mode:      "manual",
+			HTTPHost:  get(gnomeProxySchema+".http", "host"),
+			HTTPPort:  get(gnomeProxySchema+".http", "port"),
+			HTTPSHost: get(gnomeProxySchema+".https", "host"),
+			HTTPSPort: get(gnomeProxySchema+".https", "port"),
+			SOCKSHost: get(gnomeProxySchema+".socks", "host"),
+			SOCKSPort: get(gnomeProxySchema+".socks", "port"),
+			UseAuth:   get(gnomeProxySchema+".http", "use-authentication") == "true",
+			AuthUser:  get(gnomeProxySchema+".http", "authentication-user"),
+			AuthPass:  get(gnomeProxySchema+".http", "authentication-password"),
+		}), nil
+	default:
 		return nil, nil
 	}
-
-	v := gnomeProxy{
-		Mode:      mode,
-		HTTPHost:  get(gnomeProxySchema+".http", "host"),
-		HTTPPort:  get(gnomeProxySchema+".http", "port"),
-		HTTPSHost: get(gnomeProxySchema+".https", "host"),
-		HTTPSPort: get(gnomeProxySchema+".https", "port"),
-		SOCKSHost: get(gnomeProxySchema+".socks", "host"),
-		SOCKSPort: get(gnomeProxySchema+".socks", "port"),
-		UseAuth:   get(gnomeProxySchema+".http", "use-authentication") == "true",
-		AuthUser:  get(gnomeProxySchema+".http", "authentication-user"),
-		AuthPass:  get(gnomeProxySchema+".http", "authentication-password"),
-	}
-	return gnomeCandidates(v), nil
 }

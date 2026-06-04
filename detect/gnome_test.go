@@ -47,7 +47,13 @@ func TestGnomeCandidates(t *testing.T) {
 		want []Candidate
 	}{
 		{"mode none", gnomeProxy{Mode: "none", HTTPHost: "h", HTTPPort: "8080"}, nil},
-		{"mode auto", gnomeProxy{Mode: "auto", HTTPHost: "h", HTTPPort: "8080"}, nil},
+		{"mode auto without url", gnomeProxy{Mode: "auto", HTTPHost: "h", HTTPPort: "8080"}, nil},
+		{
+			"mode auto with pac url",
+			gnomeProxy{Mode: "auto", AutoconfigURL: "http://wpad.example.com/wpad.dat"},
+			[]Candidate{{PACURL: "http://wpad.example.com/wpad.dat", From: "linux/gnome"}},
+		},
+		{"mode auto blank url", gnomeProxy{Mode: "auto", AutoconfigURL: "   "}, nil},
 		{"mode empty", gnomeProxy{Mode: "", HTTPHost: "h", HTTPPort: "8080"}, nil},
 		{
 			"manual http only",

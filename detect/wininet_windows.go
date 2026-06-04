@@ -5,6 +5,7 @@ package detect
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -13,12 +14,12 @@ const winINETInternetSettingsKey = `Software\Microsoft\Windows\CurrentVersion\In
 
 // WinINETDetector reads the manual proxy configuration from the
 // current user's WinINET registry hive
-// (HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings).
-// Only the ProxyEnable + ProxyServer values are honoured.
+// (HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings):
+// the ProxyEnable + ProxyServer values, plus AutoConfigURL surfaced as a
+// PACURL candidate (used only in -tags proxykit_pac builds).
 //
-// AutoConfigURL (PAC) and AutoDetect (WPAD) are intentionally out of
-// scope here (see #14); the per-machine HKLM hive is consulted by
-// WinHTTPDetector instead, and Group Policy paths are not read.
+// The per-machine HKLM hive is consulted by WinHTTPDetector instead, and
+// Group Policy paths are not read.
 type WinINETDetector struct{}
 
 func init() {
@@ -35,10 +36,31 @@ func (WinINETDetector) Detect() ([]Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	if parsed == "" {
-		return nil, nil
+	var out []Candidate
+	if parsed != "" {
+		out = append(out, Candidate{URL: parsed, From: "wininet"})
 	}
-	return []Candidate{{URL: parsed, From: "wininet"}}, nil
+	if pac := readInternetSettingsAutoConfigURL(registry.CURRENT_USER); pac != "" {
+		out = append(out, Candidate{PACURL: pac, From: "wininet"})
+	}
+	return out, nil
+}
+
+// readInternetSettingsAutoConfigURL reads the AutoConfigURL (PAC URL)
+// string value from the "Internet Settings" key under root. It returns ""
+// when the key/value is absent or unreadable — a PAC URL is optional, so
+// failure to find one is never an error.
+func readInternetSettingsAutoConfigURL(root registry.Key) string {
+	k, err := registry.OpenKey(root, winINETInternetSettingsKey, registry.QUERY_VALUE)
+	if err != nil {
+		return ""
+	}
+	defer k.Close()
+	v, _, err := k.GetStringValue("AutoConfigURL")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(v)
 }
 
 // readInternetSettingsProxy reads ProxyEnable + ProxyServer from the

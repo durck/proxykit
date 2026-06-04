@@ -89,13 +89,43 @@ func TestParseSCUtilProxy(t *testing.T) {
 			[]Candidate{{URL: "http://p:8080", From: "macos"}},
 		},
 		{
-			"PAC enabled only is out of scope",
+			"PAC enabled surfaces a PACURL candidate",
 			`<dictionary> {
   HTTPEnable : 0
   ProxyAutoConfigEnable : 1
   ProxyAutoConfigURLString : http://wpad.example.com/wpad.dat
 }`,
+			[]Candidate{{PACURL: "http://wpad.example.com/wpad.dat", From: "macos"}},
+		},
+		{
+			"PAC enabled but URL empty is ignored",
+			`<dictionary> {
+  ProxyAutoConfigEnable : 1
+  ProxyAutoConfigURLString :
+}`,
 			nil,
+		},
+		{
+			"PAC disabled with URL present is ignored",
+			`<dictionary> {
+  ProxyAutoConfigEnable : 0
+  ProxyAutoConfigURLString : http://wpad.example.com/wpad.dat
+}`,
+			nil,
+		},
+		{
+			"manual http plus PAC both surfaced",
+			`<dictionary> {
+  HTTPEnable : 1
+  HTTPProxy : p
+  HTTPPort : 8080
+  ProxyAutoConfigEnable : 1
+  ProxyAutoConfigURLString : http://wpad/wpad.dat
+}`,
+			[]Candidate{
+				{URL: "http://p:8080", From: "macos"},
+				{PACURL: "http://wpad/wpad.dat", From: "macos"},
+			},
 		},
 		{
 			"enabled but host missing",
