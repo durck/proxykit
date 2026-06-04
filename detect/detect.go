@@ -1,6 +1,10 @@
-// Package detect discovers system proxy configurations from one or
-// more sources (environment variables, the Windows WinINET registry,
-// etc.) and exposes them as a uniform list of [Candidate]s.
+// Package detect discovers system proxy configurations from the sources
+// available on the host — *_PROXY environment variables (all platforms),
+// the Windows WinINET (HKCU) and WinHTTP (HKLM + IE) registries, the Linux
+// /etc/environment file and the GNOME and KDE desktop settings, and the
+// macOS system configuration via scutil — and exposes them as a uniform
+// list of [Candidate]s. A Candidate carries either a concrete proxy URL or,
+// when the source advertises one, a PAC URL ([Candidate.PACURL]).
 //
 // Each platform-specific file registers its detector into [Default]
 // at init time; downstream consumers call [All] to retrieve the

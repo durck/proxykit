@@ -1,10 +1,11 @@
 // Command autodetect dials through a system-detected proxy.
 //
-// On any platform proxykit reads the standard *_PROXY environment
-// variables (HTTP_PROXY, HTTPS_PROXY, NO_PROXY and lower-case forms).
-// On Windows it additionally consults the WinINET ProxyServer registry
-// value under HKCU\Software\Microsoft\Windows\CurrentVersion\Internet
-// Settings.
+// proxykit consults every detector registered for the host platform: the
+// standard *_PROXY environment variables everywhere (HTTP_PROXY, HTTPS_PROXY,
+// NO_PROXY and their lower-case forms); the Windows WinINET (HKCU) and WinHTTP
+// (HKLM + IE) registries; the Linux /etc/environment file and the GNOME and KDE
+// desktop settings; and the macOS system configuration via scutil. Built with
+// -tags proxykit_pac it also honours a system-configured PAC URL.
 //
 // Usage:
 //
