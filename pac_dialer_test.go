@@ -30,13 +30,13 @@ func TestPacChain(t *testing.T) {
 	fb := &sentinelDialer{}
 
 	t.Run("direct", func(t *testing.T) {
-		d := pacChain(context.Background(), stubPACEngine{result: "DIRECT"}, "h", cfg, fb)
+		d := pacChain(context.Background(), stubPACEngine{result: "DIRECT"}, "https", "h", cfg, fb)
 		if _, ok := d.(*transport.Direct); !ok {
 			t.Fatalf("want *transport.Direct, got %T", d)
 		}
 	})
 	t.Run("proxy", func(t *testing.T) {
-		d := pacChain(context.Background(), stubPACEngine{result: "PROXY p:8080"}, "h", cfg, fb)
+		d := pacChain(context.Background(), stubPACEngine{result: "PROXY p:8080"}, "https", "h", cfg, fb)
 		c, ok := d.(*transport.Connect)
 		if !ok {
 			t.Fatalf("want *transport.Connect, got %T", d)
@@ -46,25 +46,25 @@ func TestPacChain(t *testing.T) {
 		}
 	})
 	t.Run("socks", func(t *testing.T) {
-		d := pacChain(context.Background(), stubPACEngine{result: "SOCKS s:1080"}, "h", cfg, fb)
+		d := pacChain(context.Background(), stubPACEngine{result: "SOCKS s:1080"}, "https", "h", cfg, fb)
 		if _, ok := d.(*transport.SOCKS5); !ok {
 			t.Fatalf("want *transport.SOCKS5, got %T", d)
 		}
 	})
 	t.Run("multiple becomes a fallback chain", func(t *testing.T) {
-		d := pacChain(context.Background(), stubPACEngine{result: "PROXY a:1; PROXY b:2"}, "h", cfg, fb)
+		d := pacChain(context.Background(), stubPACEngine{result: "PROXY a:1; PROXY b:2"}, "https", "h", cfg, fb)
 		if _, ok := d.(*fallbackDialer); !ok {
 			t.Fatalf("want *fallbackDialer, got %T", d)
 		}
 	})
 	t.Run("eval error uses fallback", func(t *testing.T) {
-		d := pacChain(context.Background(), stubPACEngine{err: errors.New("boom")}, "h", cfg, fb)
+		d := pacChain(context.Background(), stubPACEngine{err: errors.New("boom")}, "https", "h", cfg, fb)
 		if d != Dialer(fb) {
 			t.Fatalf("want the fallback dialer, got %T", d)
 		}
 	})
 	t.Run("unusable result uses fallback", func(t *testing.T) {
-		d := pacChain(context.Background(), stubPACEngine{result: "GARBAGE TOKEN"}, "h", cfg, fb)
+		d := pacChain(context.Background(), stubPACEngine{result: "GARBAGE TOKEN"}, "https", "h", cfg, fb)
 		if d != Dialer(fb) {
 			t.Fatalf("want the fallback dialer, got %T", d)
 		}

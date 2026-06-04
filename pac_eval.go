@@ -75,13 +75,31 @@ func (e *gojaPACEngine) findProxy(ctx context.Context, rawURL, host string) (str
 			timeout = d
 		}
 	}
-	timer := time.AfterFunc(timeout, func() { e.vm.Interrupt(errPACTimeout) })
+	// Watchdog: interrupt a runaway PAC. We wait for the watchdog goroutine
+	// to exit (watchdog channel) BEFORE ClearInterrupt, so a late Interrupt
+	// can never leak into the next evaluation.
+	//
+	// vm.Interrupt only unwinds interpreted JS: a pathological native call —
+	// a catastrophic RegExp through goja's regexp engine, say — can still run
+	// past the deadline; DNS helpers are separately bounded by
+	// pacResolverTimeout. PAC from Config.PAC/PACURL is operator-supplied
+	// (trusted); the only attacker-influenceable path, DNS-WPAD, is a
+	// deliberate opt-in (Config.WPAD).
+	done := make(chan struct{})
+	watchdog := make(chan struct{})
+	go func() {
+		defer close(watchdog)
+		select {
+		case <-done:
+		case <-time.After(timeout):
+			e.vm.Interrupt(errPACTimeout)
+		}
+	}()
 
 	v, err := e.fn(goja.Undefined(), e.vm.ToValue(rawURL), e.vm.ToValue(host))
 
-	// Cancel the watchdog and clear any interrupt so the runtime is reusable
-	// by the next call regardless of whether the timer fired.
-	timer.Stop()
+	close(done)
+	<-watchdog
 	e.vm.ClearInterrupt()
 
 	if err != nil {
@@ -90,4 +108,7 @@ func (e *gojaPACEngine) findProxy(ctx context.Context, rawURL, host string) (str
 	return v.String(), nil
 }
 
+// close releases engine resources. Currently a no-op: the runtime holds no
+// background goroutines (the watchdog is per-call), so there is nothing to
+// release. Kept on the interface for forward compatibility.
 func (e *gojaPACEngine) close() {}

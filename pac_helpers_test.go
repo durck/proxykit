@@ -24,6 +24,16 @@ func TestPacPureHelpers(t *testing.T) {
 		if !pacDNSDomainIs("WWW.EXAMPLE.COM", ".example.com") {
 			t.Error("should be case-insensitive")
 		}
+		// Netscape dnsDomainIs is a pure suffix match (host.substring(
+		// host.length-domain.length) == domain); PAC authors pass a leading
+		// dot for a label boundary. We match the spec, so a dotless suffix
+		// matches even without a boundary — this is intentional, not a bug.
+		if !pacDNSDomainIs("notexample.com", "example.com") {
+			t.Error("pure suffix match per spec should match")
+		}
+		if pacDNSDomainIs("example.com", ".example.com") {
+			t.Error("host shorter than domain should not match")
+		}
 	})
 	t.Run("localHostOrDomainIs", func(t *testing.T) {
 		if !pacLocalHostOrDomainIs("www.example.com", "www.example.com") {
@@ -127,6 +137,12 @@ func TestPacDateRange(t *testing.T) {
 		args []string
 		want bool
 	}{
+		{[]string{"3"}, true},                                   // single day == today (3)
+		{[]string{"4"}, false},                                  // single day != today
+		{[]string{"JUN"}, true},                                 // single month == current
+		{[]string{"JUL"}, false},                                // single month != current
+		{[]string{"2026"}, true},                                // single year == current
+		{[]string{"2025"}, false},                               // single year != current
 		{[]string{"1", "5"}, true},                              // day range
 		{[]string{"10", "20"}, false},                           // day range
 		{[]string{"JAN", "DEC"}, true},                          // month range

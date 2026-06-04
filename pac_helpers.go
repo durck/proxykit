@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -80,9 +81,28 @@ func pacLocalHostOrDomainIs(host, hostdom string) bool {
 
 func pacDNSDomainLevels(host string) int { return strings.Count(host, ".") }
 
+// shExpCache memoizes compiled glob patterns. A nil *regexp.Regexp is
+// cached for patterns that fail to compile.
+var shExpCache sync.Map // shexp string -> *regexp.Regexp
+
 // pacShExpMatch matches str against a shell glob (only * and ?) compiled
 // to an anchored RE2 pattern — linear time, no backtracking (no ReDoS).
+// Compiled patterns are cached, since FindProxyForURL often calls
+// shExpMatch repeatedly with constant patterns.
 func pacShExpMatch(str, shexp string) bool {
+	v, ok := shExpCache.Load(shexp)
+	if !ok {
+		v = compileShExp(shexp)
+		shExpCache.Store(shexp, v)
+	}
+	re, _ := v.(*regexp.Regexp)
+	if re == nil {
+		return false
+	}
+	return re.MatchString(str)
+}
+
+func compileShExp(shexp string) *regexp.Regexp {
 	var b strings.Builder
 	b.WriteByte('^')
 	for _, r := range shexp {
@@ -98,9 +118,9 @@ func pacShExpMatch(str, shexp string) bool {
 	b.WriteByte('$')
 	re, err := regexp.Compile(b.String())
 	if err != nil {
-		return false
+		return nil
 	}
-	return re.MatchString(str)
+	return re
 }
 
 // pacIsInNet reports whether ip lies in pattern/mask (classic IPv4 only).
@@ -193,6 +213,18 @@ func pacDateRange(now time.Time, args []string) bool {
 	args, now = applyGMT(args, now)
 	day, mon, year := now.Day(), now.Month(), now.Year()
 	switch len(args) {
+	case 1:
+		if m, ok := parseMonth(args[0]); ok {
+			return mon == m
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(args[0]))
+		if err != nil {
+			return false
+		}
+		if n > 31 { // a year
+			return year == n
+		}
+		return day == n // a day of the month
 	case 2:
 		if m1, ok1 := parseMonth(args[0]); ok1 {
 			if m2, ok2 := parseMonth(args[1]); ok2 {

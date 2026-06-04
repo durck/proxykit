@@ -90,42 +90,57 @@ func newPACDialer(cfg Config, detectedPACURLs []string, fallback Dialer) *pacDia
 
 // DialContext routes address through the PAC-selected proxy chain.
 func (p *pacDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	p.once.Do(func() { p.engine = p.buildEngine(ctx) })
+	p.once.Do(func() {
+		// Fetch+compile once on an INDEPENDENT context, so a single
+		// short-lived or cancelled first dial cannot permanently poison the
+		// engine for every later dial.
+		bctx, cancel := context.WithTimeout(context.Background(), pacFetchTimeout)
+		defer cancel()
+		p.engine = p.buildEngine(bctx)
+	})
 	if p.engine == nil {
 		return p.fallback.DialContext(ctx, network, address)
 	}
 
-	host, _, err := net.SplitHostPort(address)
+	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		host = address
 	}
-	return p.dialerForHost(ctx, host).DialContext(ctx, network, address)
+	// The Dialer interface carries no application scheme, so infer the PAC
+	// url from the port (80 → http, otherwise https). This only matters for
+	// PAC scripts that branch on the url's scheme.
+	scheme := "https"
+	if port == "80" {
+		scheme = "http"
+	}
+	return p.dialerForHost(ctx, scheme, host).DialContext(ctx, network, address)
 }
 
-func (p *pacDialer) dialerForHost(ctx context.Context, host string) Dialer {
+func (p *pacDialer) dialerForHost(ctx context.Context, scheme, host string) Dialer {
+	key := scheme + "|" + host
 	now := time.Now()
 	p.mu.Lock()
-	if e, ok := p.cache[host]; ok && now.Before(e.expires) {
+	if e, ok := p.cache[key]; ok && now.Before(e.expires) {
 		p.mu.Unlock()
 		return e.dialer
 	}
 	p.mu.Unlock()
 
-	d := pacChain(ctx, p.engine, host, p.cfg, p.fallback)
+	d := pacChain(ctx, p.engine, scheme, host, p.cfg, p.fallback)
 
 	p.mu.Lock()
 	if len(p.cache) >= pacCacheMax {
-		p.cache = map[string]pacCacheEntry{} // bound memory; cheap reset
+		p.cache = map[string]pacCacheEntry{} // bound memory; cheap reset under a cold burst
 	}
-	p.cache[host] = pacCacheEntry{dialer: d, expires: now.Add(pacCacheTTL)}
+	p.cache[key] = pacCacheEntry{dialer: d, expires: now.Add(pacCacheTTL)}
 	p.mu.Unlock()
 	return d
 }
 
-// pacChain evaluates the PAC for host and turns its result into a dialer.
-// On eval error or an empty/unusable result it returns fallback.
-func pacChain(ctx context.Context, eng pacEngine, host string, cfg Config, fallback Dialer) Dialer {
-	res, err := eng.findProxy(ctx, "https://"+host, host)
+// pacChain evaluates the PAC for scheme://host and turns its result into a
+// dialer. On eval error or an empty/unusable result it returns fallback.
+func pacChain(ctx context.Context, eng pacEngine, scheme, host string, cfg Config, fallback Dialer) Dialer {
+	res, err := eng.findProxy(ctx, scheme+"://"+host, host)
 	if err != nil {
 		logf(cfg.OnLog, "warn", "proxykit: PAC eval for %q failed: %v", host, err)
 		return fallback
