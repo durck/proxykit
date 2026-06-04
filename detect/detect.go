@@ -26,6 +26,13 @@ type Candidate struct {
 	// "linux/gnome", etc. Useful for diagnostics and precedence
 	// decisions in the caller.
 	From string
+
+	// PACURL, when non-empty, is the URL of a Proxy Auto-Config script
+	// the source advertises (e.g. Windows AutoConfigURL, macOS
+	// ProxyAutoConfigURLString, GNOME mode=auto autoconfig-url). It is a
+	// PAC candidate rather than a concrete proxy: URL is then empty.
+	// Consumers ignore it unless built with -tags proxykit_pac.
+	PACURL string
 }
 
 // Detector returns proxy candidates from a single source.

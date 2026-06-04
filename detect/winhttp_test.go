@@ -25,8 +25,9 @@ func TestWinHTTPDetector_NonWindowsNoop(t *testing.T) {
 // TestWinHTTPDetector_WindowsSmoke asserts the HKLM registry read and the
 // WinHttpGetIEProxyConfigForCurrentUser call run without panicking on
 // Windows. The host's actual proxy state is implementation-defined, so we
-// only verify the contract: at most one candidate per source (≤2),
-// de-duplicated, each tagged "winhttp" with a non-empty URL, and no error.
+// only verify the contract: at most four candidates (HKLM/IE × proxy/PAC),
+// de-duplicated, each tagged "winhttp" with exactly one of URL/PACURL set,
+// and no error.
 func TestWinHTTPDetector_WindowsSmoke(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only")
@@ -35,21 +36,25 @@ func TestWinHTTPDetector_WindowsSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Detect: %v", err)
 	}
-	if len(cs) > 2 {
-		t.Errorf("got %d candidates, want at most 2: %v", len(cs), cs)
+	if len(cs) > 4 {
+		t.Errorf("got %d candidates, want at most 4: %v", len(cs), cs)
 	}
 	seen := map[string]struct{}{}
 	for _, c := range cs {
 		if c.From != "winhttp" {
 			t.Errorf("From = %q, want winhttp", c.From)
 		}
-		if c.URL == "" {
-			t.Errorf("empty URL in candidate %+v", c)
+		if (c.URL == "") == (c.PACURL == "") {
+			t.Errorf("candidate must set exactly one of URL/PACURL: %+v", c)
 		}
-		if _, dup := seen[c.URL]; dup {
-			t.Errorf("duplicate URL %q not de-duplicated: %v", c.URL, cs)
+		key := "proxy:" + c.URL
+		if c.PACURL != "" {
+			key = "pac:" + c.PACURL
 		}
-		seen[c.URL] = struct{}{}
+		if _, dup := seen[key]; dup {
+			t.Errorf("duplicate candidate %q not de-duplicated: %v", key, cs)
+		}
+		seen[key] = struct{}{}
 	}
 }
 
@@ -71,40 +76,47 @@ func TestWinHTTPDetector_DefaultRegistration(t *testing.T) {
 }
 
 // TestMergeWinHTTPSources covers the platform-agnostic orchestration of
-// the two WinHTTP sources: ordering (HKLM first), de-duplication, and the
-// error-precedence rule (an HKLM read error is surfaced only when neither
-// source produced a URL, so an IE candidate is never discarded).
+// the WinHTTP sources: proxy ordering (HKLM first), PAC surfacing,
+// per-kind de-duplication, and the error-precedence rule (an HKLM read
+// error is surfaced only when nothing at all was produced).
 func TestMergeWinHTTPSources(t *testing.T) {
 	errBoom := errors.New("boom")
 	cases := []struct {
 		name    string
 		hklm    string
 		hklmErr error
-		ie      string
+		ieProxy string
+		hklmPAC string
+		iePAC   string
 		want    []Candidate
 		wantErr error
 	}{
-		{"both empty", "", nil, "", nil, nil},
-		{"hklm only", "http://m:8080", nil, "",
+		{"both empty", "", nil, "", "", "", nil, nil},
+		{"hklm proxy only", "http://m:8080", nil, "", "", "",
 			[]Candidate{{URL: "http://m:8080", From: "winhttp"}}, nil},
-		{"ie only", "", nil, "http://u:8080",
+		{"ie proxy only", "", nil, "http://u:8080", "", "",
 			[]Candidate{{URL: "http://u:8080", From: "winhttp"}}, nil},
-		{"both distinct, hklm first", "http://m:8080", nil, "http://u:8080",
+		{"both proxies distinct, hklm first", "http://m:8080", nil, "http://u:8080", "", "",
 			[]Candidate{{URL: "http://m:8080", From: "winhttp"}, {URL: "http://u:8080", From: "winhttp"}}, nil},
-		{"duplicate deduped", "http://same:8080", nil, "http://same:8080",
+		{"duplicate proxy deduped", "http://same:8080", nil, "http://same:8080", "", "",
 			[]Candidate{{URL: "http://same:8080", From: "winhttp"}}, nil},
-		{"hklm error suppressed when ie present", "", errBoom, "http://u:8080",
+		{"pac from hklm", "", nil, "", "http://wpad/h.pac", "",
+			[]Candidate{{PACURL: "http://wpad/h.pac", From: "winhttp"}}, nil},
+		{"pac from ie", "", nil, "", "", "http://wpad/i.pac",
+			[]Candidate{{PACURL: "http://wpad/i.pac", From: "winhttp"}}, nil},
+		{"duplicate pac deduped", "", nil, "", "http://wpad/x.pac", "http://wpad/x.pac",
+			[]Candidate{{PACURL: "http://wpad/x.pac", From: "winhttp"}}, nil},
+		{"proxy then pac (proxies first)", "http://m:8080", nil, "", "http://wpad/h.pac", "",
+			[]Candidate{{URL: "http://m:8080", From: "winhttp"}, {PACURL: "http://wpad/h.pac", From: "winhttp"}}, nil},
+		{"hklm error suppressed when ie proxy present", "", errBoom, "http://u:8080", "", "",
 			[]Candidate{{URL: "http://u:8080", From: "winhttp"}}, nil},
-		{"hklm error and nothing found, error surfaced", "", errBoom, "", nil, errBoom},
-		// Defensive: readInternetSettingsProxy never returns ("url", err)
-		// today, but the contract must still prefer the URL and suppress
-		// the error if it ever does.
-		{"hklm url and error, url wins", "http://m:8080", errBoom, "",
-			[]Candidate{{URL: "http://m:8080", From: "winhttp"}}, nil},
+		{"hklm error suppressed when pac present", "", errBoom, "", "", "http://wpad/i.pac",
+			[]Candidate{{PACURL: "http://wpad/i.pac", From: "winhttp"}}, nil},
+		{"hklm error and nothing found, error surfaced", "", errBoom, "", "", "", nil, errBoom},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := mergeWinHTTPSources(tc.hklm, tc.hklmErr, tc.ie)
+			got, err := mergeWinHTTPSources(tc.hklm, tc.hklmErr, tc.ieProxy, tc.hklmPAC, tc.iePAC)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}

@@ -12,6 +12,10 @@ import (
 type gnomeProxy struct {
 	Mode string // "none" | "manual" | "auto"
 
+	// AutoconfigURL is the PAC URL read from autoconfig-url when
+	// Mode == "auto"; empty otherwise.
+	AutoconfigURL string
+
 	HTTPHost, HTTPPort   string
 	HTTPSHost, HTTPSPort string
 	SOCKSHost, SOCKSPort string
@@ -23,15 +27,21 @@ type gnomeProxy struct {
 }
 
 // gnomeCandidates turns a resolved GNOME proxy configuration into
-// candidates. Only "manual" mode yields anything: "none" means no
-// proxy, and "auto" points at a PAC/WPAD URL that Candidate cannot
-// represent (mirrors the WinINET detector skipping AutoConfigURL).
+// candidates. "manual" mode yields proxy candidates; "auto" mode yields a
+// single PACURL candidate from AutoconfigURL (used only in -tags
+// proxykit_pac builds); "none" (or anything else) yields nothing.
 //
 // http and https proxies map to an http:// URL (reached via CONNECT),
 // socks to socks5://, matching parseWinINETProxyString. Stored
 // credentials, when use-authentication is on, are attached to the
 // http candidate — GNOME keeps them only under .http.
 func gnomeCandidates(v gnomeProxy) []Candidate {
+	if v.Mode == "auto" {
+		if u := strings.TrimSpace(v.AutoconfigURL); u != "" {
+			return []Candidate{{PACURL: u, From: "linux/gnome"}}
+		}
+		return nil
+	}
 	if v.Mode != "manual" {
 		return nil
 	}
