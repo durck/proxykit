@@ -16,8 +16,27 @@ type Config struct {
 	// AutoDetect enables system proxy detection (environment variables,
 	// Windows WinINET registry). It is independent of Manual: when both
 	// are set, Manual is tried first and any detected proxies are
-	// appended as fallbacks.
+	// appended as fallbacks. When AutoDetect surfaces a system-configured
+	// PAC URL it is used too (see PAC), but only in binaries built with
+	// -tags proxykit_pac.
 	AutoDetect bool
+
+	// PAC is an inline Proxy Auto-Config script (the JavaScript body
+	// defining FindProxyForURL). When set it takes precedence over PACURL
+	// and any detected PAC URL. Evaluating it requires building with
+	// -tags proxykit_pac; otherwise it is ignored with a warning.
+	PAC string
+
+	// PACURL is the URL of a .pac script to fetch and evaluate. Ignored
+	// when PAC is set. Requires -tags proxykit_pac.
+	PACURL string
+
+	// WPAD enables ACTIVE DNS-based PAC discovery (probing
+	// http://wpad.<domain>/wpad.dat up the host's domain). It is a
+	// separate opt-in from AutoDetect because a rogue wpad host on the
+	// network can serve an attacker-controlled PAC; enable it only on
+	// trusted networks. Requires -tags proxykit_pac.
+	WPAD bool
 
 	// Auth is the ordered list of Authenticators tried on HTTP 407
 	// from a CONNECT proxy. The transport matches each Authenticator's
